@@ -1,0 +1,66 @@
+{
+  "model_file": "测试车模型(1).cmodel",
+  "robot_name": "cmodel_agv",
+  "chassis": {
+    "type": "diff",
+    "length_m": 1.788,
+    "width_m": 0.994,
+    "height_m": 0.35,
+    "head_offset_m": 1.308,
+    "tail_offset_m": 0.48,
+    "left_offset_m": 0.497,
+    "right_offset_m": 0.497,
+    "max_speed_mps": 1.8,
+    "max_accel_mps2": 0.5,
+    "max_ang_speed_radps": 3.490658503988659
+  },
+  "drive_wheels": {
+    "radius_m": 0.115,
+    "track_width_m": 0.7952,
+    "wheel_width_m": 0.05,
+    "x_offset_m": 1.09
+  },
+  "lidars": [
+    {
+      "name": "laser",
+      "x": 1.09,
+      "y": 0.0,
+      "z": 2.03,
+      "roll": 0.0,
+      "pitch": 0.0,
+      "yaw": 0.0,
+      "min_range": 0.05,
+      "max_range": 25.0,
+      "fov_deg": 270.0
+    },
+    {
+      "name": "laser1",
+      "x": 1.25,
+      "y": -0.45,
+      "z": 0.3999999694824219,
+      "roll": 3.141592653589793,
+      "pitch": -0.0,
+      "yaw": -0.9250245035569946,
+      "min_range": 0.05,
+      "max_range": 25.0,
+      "fov_deg": 270.0
+    },
+    {
+      "name": "laser0",
+      "x": 1.25,
+      "y": 0.45,
+      "z": 0.399999969,
+      "roll": 3.141592653589793,
+      "pitch": 0.0,
+      "yaw": 0.9250245035569946,
+      "min_range": 0.05,
+      "max_range": 25.0,
+      "fov_deg": 270.0
+    }
+  ],
+  "imu": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.1
+  }
+}

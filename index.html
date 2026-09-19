@@ -1,0 +1,4799 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AMR Studio V4 · 工业级全栈机器人调度与仿真平台</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --primary: #f0883e;
+      --primary-glow: rgba(240, 136, 62, 0.4);
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --cyan: #00ffcc;
+      --purple: #bc8cff;
+      --red: #f85149;
+      --yellow: #d29922;
+      --text: #c9d1d9;
+      --text-dim: #8b949e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    header {
+      background: #010409;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 15px;
+      color: #fff;
+    }
+    .badge {
+      background: rgba(88, 166, 255, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(88, 166, 255, 0.3);
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+    }
+    .badge.online {
+      background: rgba(63, 185, 80, 0.15);
+      color: var(--green);
+      border-color: rgba(63, 185, 80, 0.4);
+    }
+    .badge.navigating {
+      background: rgba(0, 255, 204, 0.15);
+      color: var(--cyan);
+      border-color: rgba(0, 255, 204, 0.5);
+      animation: pulse 1.5s infinite;
+    }
+    .badge.estop {
+      background: rgba(248, 81, 73, 0.25);
+      color: var(--red);
+      border-color: var(--red);
+      animation: pulse 0.8s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 0.7; }
+      50% { opacity: 1; }
+      100% { opacity: 0.7; }
+    }
+    .main-container {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 54px);
+    }
+    .canvas-panel {
+      flex: 1;
+      position: relative;
+      background: #090d13;
+      overflow: hidden;
+      cursor: crosshair;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .canvas-overlay {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(22, 27, 34, 0.90);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(8px);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 11px;
+      line-height: 1.6;
+      pointer-events: none;
+      z-index: 15;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+    /* Floating Map Scenario Selector Bar */
+    .map-scenario-switcher {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(13, 17, 23, 0.92);
+      border: 1px solid rgba(48, 54, 61, 0.95);
+      border-radius: 12px;
+      padding: 6px 10px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 1px rgba(255, 255, 255, 0.1);
+      z-index: 30;
+    }
+    .scenario-switch-title {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 8px 0 2px;
+      border-right: 1px solid #30363d;
+    }
+    .scenario-live-badge {
+      font-size: 11px;
+      font-weight: 700;
+      color: #58a6ff;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+    .scenario-pills {
+      display: flex;
+      gap: 6px;
+    }
+    .scenario-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+      color: #8b949e;
+      transition: all 0.2s ease;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .scenario-pill:hover {
+      background: #21262d;
+      border-color: #58a6ff;
+      color: #f0f6fc;
+      transform: translateY(-1px);
+    }
+    .scenario-pill.active {
+      background: rgba(0, 255, 204, 0.14);
+      border-color: #00ffcc;
+      color: #ffffff;
+      box-shadow: 0 0 14px rgba(0, 255, 204, 0.4);
+    }
+    .scenario-pill.active .sc-name {
+      color: #00ffcc;
+      font-weight: 700;
+    }
+    .scenario-pill.active .sc-sub {
+      color: rgba(255, 255, 255, 0.75);
+    }
+    .sc-icon {
+      font-size: 15px;
+      line-height: 1;
+    }
+    .sc-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      text-align: left;
+    }
+    .sc-name {
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+    .sc-sub {
+      font-size: 9px;
+      color: #8b949e;
+      line-height: 1.2;
+      margin-top: 2px;
+    }
+    .map-controls {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 15;
+    }
+    .map-btn {
+      background: rgba(22, 27, 34, 0.92);
+      border: 1px solid var(--border);
+      color: #c9d1d9;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      transition: all 0.2s ease;
+    }
+    .map-btn:hover {
+      background: #21262d;
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .side-panel {
+      width: 400px;
+      background: var(--card-bg);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 14px;
+      gap: 12px;
+    }
+    .card {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .card h3 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .config-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .custom-select {
+      flex: 1;
+      background: #161b22;
+      color: #fff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 11px;
+      outline: none;
+      cursor: pointer;
+    }
+    .custom-select:focus {
+      border-color: var(--primary);
+    }
+    .mission-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .mission-btn {
+      background: #21262d;
+      border: 1px solid var(--border);
+      color: #c9d1d9;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      transition: all 0.2s;
+    }
+    .mission-btn:hover {
+      background: #30363d;
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .mission-btn.cancel {
+      grid-column: span 2;
+      background: rgba(248, 81, 73, 0.15);
+      border-color: rgba(248, 81, 73, 0.3);
+      color: var(--red);
+      font-weight: 600;
+    }
+    .mission-btn.cancel:hover {
+      background: rgba(248, 81, 73, 0.25);
+    }
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+    }
+    .tel-item {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 6px;
+      text-align: center;
+    }
+    .tel-label {
+      font-size: 10px;
+      color: var(--text-dim);
+    }
+    .tel-val {
+      font-size: 13px;
+      font-weight: 700;
+      color: #58a6ff;
+      font-family: monospace;
+      margin-top: 2px;
+    }
+    /* Industrial IO Buttons & Indicators */
+    .io-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .io-btn {
+      background: #161b22;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .io-btn.active {
+      background: rgba(248, 81, 73, 0.2);
+      border-color: var(--red);
+      color: var(--red);
+      font-weight: 700;
+    }
+    .tower-indicator {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+      background: #161b22;
+      border-radius: 6px;
+      padding: 6px;
+      margin-top: 6px;
+    }
+    .light-bulb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #21262d;
+      border: 1px solid #30363d;
+      transition: all 0.3s;
+    }
+    .light-bulb.red.on { background: #f85149; box-shadow: 0 0 8px #f85149; }
+    .light-bulb.yellow.on { background: #d29922; box-shadow: 0 0 8px #d29922; }
+    .light-bulb.green.on { background: #3fb950; box-shadow: 0 0 8px #3fb950; }
+
+    .joystick-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 4px;
+    }
+    .joystick-base {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background: #161b22;
+      border: 2px solid var(--border);
+      position: relative;
+      touch-action: none;
+      cursor: grab;
+    }
+    .joystick-handle {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--primary);
+      box-shadow: 0 0 10px var(--primary-glow);
+      position: absolute;
+      top: 32px;
+      left: 32px;
+      pointer-events: none;
+    }
+    .spec-table {
+      width: 100%;
+      font-size: 11px;
+      border-collapse: collapse;
+    }
+    .spec-table td {
+      padding: 4px 0;
+      border-bottom: 1px solid #21262d;
+    }
+    .spec-table td:last-child {
+      text-align: right;
+      font-family: monospace;
+      color: var(--accent);
+    }
+
+    /* ============================================================ */
+    /* DEBUG & REAL-TIME EVENT SUBSCRIPTION CONSOLE STYLES         */
+    /* ============================================================ */
+    .debug-btn {
+      background: rgba(30, 41, 59, 0.95);
+      border: 1px solid rgba(88, 166, 255, 0.4);
+      color: #e2e8f0;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+    .debug-btn:hover {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: #38bdf8;
+      color: #38bdf8;
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+    }
+    .debug-indicator-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 1.6s infinite;
+    }
+    .debug-event-count {
+      background: rgba(88, 166, 255, 0.25);
+      color: #60a5fa;
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-family: monospace;
+      border: 1px solid rgba(88, 166, 255, 0.4);
+    }
+
+    /* Non-Blocking Dockable & Floating Debug Console */
+    .debug-modal-wrapper {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 500;
+      pointer-events: none; /* Non-blocking: clicks pass through to main canvas & panels */
+      display: flex;
+      align-items: flex-end; /* Dock to bottom by default */
+      justify-content: flex-start;
+      padding: 14px 18px;
+      box-sizing: border-box;
+    }
+    .debug-backdrop {
+      display: none !important; /* NO dark veil blocking the main interface */
+    }
+    .debug-dialog {
+      position: relative;
+      pointer-events: auto; /* Debug console itself receives clicks */
+      width: calc(100vw - 440px); /* Leave right side panel completely unobstructed */
+      max-width: 1050px;
+      height: 380px;
+      max-height: 80vh;
+      background: rgba(13, 17, 23, 0.95);
+      border: 1px solid rgba(48, 54, 61, 0.95);
+      border-radius: 12px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 20px rgba(56, 189, 248, 0.15);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      backdrop-filter: blur(16px);
+      animation: modalFadeIn 0.2s ease-out;
+      transition: box-shadow 0.2s, border-color 0.2s;
+    }
+    /* Mode: Floating Free Window */
+    .debug-dialog.floating {
+      position: fixed;
+      width: 820px;
+      max-width: 95vw;
+      height: 440px;
+      max-height: 85vh;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 25px rgba(0, 255, 204, 0.2);
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+    /* Mode: Fullscreen Mode */
+    .debug-dialog.fullscreen {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
+      width: calc(100vw - 20px) !important;
+      max-width: 100vw !important;
+      height: calc(100vh - 20px) !important;
+      max-height: 100vh !important;
+      border-radius: 10px;
+      z-index: 1000;
+    }
+    /* Mode: Minimized Bar */
+    .debug-dialog.minimized {
+      height: 42px !important;
+      width: 440px !important;
+      overflow: hidden;
+    }
+    .debug-dialog.minimized .debug-sub-bar,
+    .debug-dialog.minimized .debug-toolbar,
+    .debug-dialog.minimized .debug-tab-nav,
+    .debug-dialog.minimized .debug-body,
+    .debug-dialog.minimized .debug-footer {
+      display: none !important;
+    }
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .debug-dialog-header {
+      padding: 10px 16px;
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: grab;
+      user-select: none;
+    }
+    .debug-dialog-header:active {
+      cursor: grabbing;
+    }
+    .debug-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .icon-btn {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .icon-btn:hover {
+      background: #30363d;
+      color: #fff;
+    }
+    .icon-btn.close-btn:hover {
+      background: #da3633;
+      border-color: #f85149;
+    }
+
+    /* Subscription Channel Bar */
+    .debug-sub-bar {
+      padding: 10px 18px;
+      background: #0f141c;
+      border-bottom: 1px solid #21262d;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .sub-bar-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #8b949e;
+    }
+    .sub-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      padding: 4px 10px;
+      border-radius: 16px;
+      font-size: 11px;
+      color: #8b949e;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.2s;
+    }
+    .sub-chip input[type="checkbox"] {
+      cursor: pointer;
+      accent-color: #58a6ff;
+    }
+    .sub-chip.active {
+      color: #fff;
+      border-color: #388bfd;
+      background: rgba(56, 139, 253, 0.12);
+    }
+    .sub-chip.chassis.active { border-color: #00ffcc; color: #00ffcc; background: rgba(0, 255, 204, 0.08); }
+    .sub-chip.navigation.active { border-color: #58a6ff; color: #58a6ff; background: rgba(88, 166, 255, 0.08); }
+    .sub-chip.safety.active { border-color: #f85149; color: #f85149; background: rgba(248, 81, 73, 0.08); }
+    .sub-chip.sensors.active { border-color: #bc8cff; color: #bc8cff; background: rgba(188, 140, 255, 0.08); }
+    .sub-chip.system.active { border-color: #f0883e; color: #f0883e; background: rgba(240, 136, 62, 0.08); }
+
+    .chip-badge {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 1px 5px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-family: monospace;
+    }
+
+    /* Toolbar */
+    .debug-toolbar {
+      padding: 8px 18px;
+      background: #161b22;
+      border-bottom: 1px solid #21262d;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .tool-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .tool-btn {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      border-radius: 6px;
+      padding: 4px 9px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tool-btn:hover {
+      background: #30363d;
+      color: #fff;
+    }
+    .tool-btn.active {
+      background: #f0883e;
+      color: #000;
+      font-weight: 600;
+      border-color: #f0883e;
+    }
+    .search-box {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      color: #fff;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      width: 170px;
+      outline: none;
+    }
+    .search-box:focus { border-color: #58a6ff; }
+
+    /* Tabs */
+    .debug-tabs {
+      display: flex;
+      background: #0d1117;
+      border-bottom: 1px solid #21262d;
+      padding: 0 18px;
+    }
+    .debug-tab {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: #8b949e;
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .debug-tab:hover {
+      color: #c9d1d9;
+    }
+    .debug-tab.active {
+      color: #58a6ff;
+      border-bottom-color: #58a6ff;
+    }
+
+    /* Content Area */
+    .debug-tab-content {
+      flex: 1;
+      overflow-y: auto;
+      background: #090d13;
+      padding: 12px 18px;
+    }
+
+    /* Event Stream Cards */
+    .event-stream-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .event-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-left: 4px solid #58a6ff;
+      border-radius: 6px;
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      transition: background 0.15s;
+    }
+    .event-card:hover {
+      background: #1c2128;
+    }
+    .event-card.chassis { border-left-color: #00ffcc; }
+    .event-card.navigation { border-left-color: #58a6ff; }
+    .event-card.safety { border-left-color: #f85149; }
+    .event-card.sensors { border-left-color: #bc8cff; }
+    .event-card.system { border-left-color: #f0883e; }
+
+    .event-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .event-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .event-time {
+      font-family: monospace;
+      font-size: 11px;
+      color: #8b949e;
+    }
+    .event-cat-tag {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      background: rgba(255,255,255,0.06);
+    }
+    .event-level-tag {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+    .event-level-tag.info { background: rgba(88,166,255,0.15); color: #58a6ff; }
+    .event-level-tag.success { background: rgba(63,185,80,0.15); color: #3fb950; }
+    .event-level-tag.warning { background: rgba(210,153,34,0.15); color: #d29922; }
+    .event-level-tag.danger { background: rgba(248,81,73,0.2); color: #f85149; }
+
+    .event-title {
+      font-weight: 600;
+      color: #fff;
+    }
+    .event-msg {
+      color: #c9d1d9;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .event-payload-btn {
+      font-size: 10px;
+      color: #8b949e;
+      background: none;
+      border: none;
+      cursor: pointer;
+      text-decoration: underline;
+      align-self: flex-start;
+      margin-top: 2px;
+    }
+    .event-payload-btn:hover { color: #58a6ff; }
+    .event-payload-pre {
+      background: #0d1117;
+      border: 1px solid #21262d;
+      border-radius: 4px;
+      padding: 6px 10px;
+      font-size: 11px;
+      font-family: monospace;
+      color: #58a6ff;
+      overflow-x: auto;
+      margin-top: 4px;
+    }
+
+    /* Topic Inspector Grid */
+    .topics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .topic-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .topic-card-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #58a6ff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #21262d;
+      padding-bottom: 6px;
+    }
+    .topic-card-body {
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    /* Inject Panel Grid */
+    .inject-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .inject-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .inject-card h4 {
+      font-size: 12px;
+      color: #fff;
+    }
+    .inject-card p {
+      font-size: 11px;
+      color: #8b949e;
+      line-height: 1.4;
+      flex: 1;
+    }
+    .inject-btn {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .inject-btn:hover {
+      background: #388bfd;
+      border-color: #388bfd;
+    }
+    .inject-btn.danger:hover {
+      background: #da3633;
+      border-color: #f85149;
+    }
+
+    /* Footer */
+    .debug-footer {
+      padding: 8px 18px;
+      background: #161b22;
+      border-top: 1px solid #30363d;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: #8b949e;
+    }
+
+    /* ============================================================ */
+    /* RASPBERRY PI PERFORMANCE MONITOR STYLES                      */
+    /* ============================================================ */
+    .perf-btn {
+      background: rgba(30, 41, 59, 0.95);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #e2e8f0;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+    .perf-btn:hover {
+      background: rgba(245, 158, 11, 0.15);
+      border-color: #f59e0b;
+      color: #fbbf24;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
+    }
+    .perf-indicator-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #f59e0b;
+      box-shadow: 0 0 8px #f59e0b;
+      animation: pulse 1.6s infinite;
+    }
+    .perf-cpu-badge {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-family: monospace;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+    }
+
+    /* Non-Blocking Dockable & Floating Performance Console */
+    .perf-modal-wrapper {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 520;
+      pointer-events: none; /* Non-blocking: allows clicks to pass to canvas and sidebars */
+      display: flex;
+      align-items: flex-end; /* Dock to bottom by default */
+      justify-content: flex-start;
+      padding: 14px 18px;
+      box-sizing: border-box;
+    }
+    .perf-dialog {
+      position: relative;
+      pointer-events: auto;
+      width: calc(100vw - 440px); /* Leave right panel accessible */
+      max-width: 1050px;
+      height: 530px;
+      max-height: 85vh;
+      background: rgba(13, 17, 23, 0.96);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      border-radius: 12px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), 0 0 20px rgba(245, 158, 11, 0.15);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      backdrop-filter: blur(16px);
+      animation: modalFadeIn 0.2s ease-out;
+      transition: box-shadow 0.2s, border-color 0.2s;
+    }
+    .perf-dialog.floating {
+      position: fixed;
+      width: 860px;
+      max-width: 95vw;
+      height: 520px;
+      max-height: 88vh;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 25px rgba(245, 158, 11, 0.25);
+    }
+    .perf-dialog.fullscreen {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
+      width: calc(100vw - 20px) !important;
+      max-width: 100vw !important;
+      height: calc(100vh - 20px) !important;
+      max-height: 100vh !important;
+      border-radius: 10px;
+      z-index: 1000;
+    }
+    .perf-dialog.minimized {
+      height: 48px !important;
+      overflow: hidden;
+    }
+    .perf-dialog.minimized .perf-dialog-body,
+    .perf-dialog.minimized .perf-footer {
+      display: none !important;
+    }
+    .perf-dialog-header {
+      padding: 10px 16px;
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+      cursor: move;
+    }
+    .perf-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #f0f6fc;
+    }
+    .perf-dialog-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    /* 4 Overview Metric Cards */
+    .perf-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+    .perf-card {
+      background: rgba(22, 27, 34, 0.8);
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      position: relative;
+      overflow: hidden;
+    }
+    .perf-card-title {
+      font-size: 11px;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .perf-card-val {
+      font-size: 20px;
+      font-weight: 700;
+      font-family: monospace;
+      color: #f0f6fc;
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+    }
+    .perf-card-val .unit {
+      font-size: 12px;
+      color: #8b949e;
+      font-weight: normal;
+    }
+    .perf-sub-text {
+      font-size: 11px;
+      color: #8b949e;
+      font-family: monospace;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .perf-mini-bar-bg {
+      width: 100%;
+      height: 4px;
+      background: rgba(48, 54, 61, 0.6);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 2px;
+    }
+    .perf-mini-bar-fill {
+      height: 100%;
+      background: #38bdf8;
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+    .perf-cores-box {
+      display: flex;
+      gap: 4px;
+      margin-top: 2px;
+    }
+    .perf-core-cell {
+      flex: 1;
+      height: 18px;
+      background: rgba(33, 38, 45, 0.9);
+      border: 1px solid #30363d;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-family: monospace;
+      color: #8b949e;
+      position: relative;
+      overflow: hidden;
+    }
+    .perf-core-fill {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(56, 189, 248, 0.4);
+      z-index: 0;
+      transition: height 0.3s ease;
+    }
+    .perf-core-label {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Trend Chart Box */
+    .perf-chart-box {
+      background: rgba(22, 27, 34, 0.85);
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .perf-chart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 600;
+      color: #c9d1d9;
+    }
+    .perf-chart-legend {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 11px;
+      color: #8b949e;
+    }
+    .legend-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .perf-canvas-wrap {
+      width: 100%;
+      height: 85px;
+      position: relative;
+    }
+    #perfChartCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Process Table Box */
+    .perf-proc-box {
+      background: rgba(22, 27, 34, 0.85);
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .perf-proc-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .perf-proc-table th {
+      text-align: left;
+      padding: 6px 10px;
+      color: #8b949e;
+      background: rgba(13, 17, 23, 0.6);
+      font-weight: 600;
+      border-bottom: 1px solid #30363d;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .perf-proc-table td {
+      padding: 7px 10px;
+      border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+      color: #c9d1d9;
+    }
+    .perf-proc-table tr:hover td {
+      background: rgba(56, 189, 248, 0.05);
+    }
+    .proc-tag {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      font-family: monospace;
+    }
+    .proc-tag.agv {
+      background: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+    .proc-tag.teleop {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .proc-tag.nav {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .perf-footer {
+      padding: 8px 18px;
+      background: #161b22;
+      border-top: 1px solid #30363d;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: #8b949e;
+    }
+
+    /* ============================================================ */
+    /* SIMULATION REPLAY & FLIGHT RECORDER STYLES                   */
+    /* ============================================================ */
+    .replay-btn {
+      background: rgba(30, 41, 59, 0.95);
+      border: 1px solid rgba(168, 85, 247, 0.45);
+      color: #e2e8f0;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+    .replay-btn:hover {
+      background: rgba(168, 85, 247, 0.15);
+      border-color: #c084fc;
+      color: #e9d5ff;
+      box-shadow: 0 0 12px rgba(168, 85, 247, 0.35);
+    }
+    .replay-indicator-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #a855f7;
+      box-shadow: 0 0 8px #a855f7;
+      animation: pulse 1.6s infinite;
+    }
+    .replay-indicator-dot.recording {
+      background: #ef4444 !important;
+      box-shadow: 0 0 10px #ef4444 !important;
+    }
+    .replay-session-count {
+      background: rgba(168, 85, 247, 0.25);
+      color: #d8b4fe;
+      padding: 1px 6px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-family: monospace;
+      border: 1px solid rgba(168, 85, 247, 0.4);
+    }
+
+    /* Non-Blocking Replay Modal Wrapper */
+    .replay-modal-wrapper {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 530;
+      pointer-events: none;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-start;
+      padding: 14px 18px;
+      box-sizing: border-box;
+    }
+    .replay-dialog {
+      position: relative;
+      pointer-events: auto;
+      width: calc(100vw - 440px);
+      max-width: 1080px;
+      height: 520px;
+      max-height: 86vh;
+      background: rgba(13, 17, 23, 0.96);
+      border: 1px solid rgba(168, 85, 247, 0.45);
+      border-radius: 12px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), 0 0 22px rgba(168, 85, 247, 0.18);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      backdrop-filter: blur(16px);
+      animation: modalFadeIn 0.2s ease-out;
+      transition: box-shadow 0.2s, border-color 0.2s;
+    }
+    .replay-dialog.floating {
+      position: fixed;
+      width: 880px;
+      max-width: 95vw;
+      height: 540px;
+      max-height: 88vh;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 25px rgba(168, 85, 247, 0.28);
+    }
+    .replay-dialog.fullscreen {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
+      width: calc(100vw - 20px) !important;
+      max-width: 100vw !important;
+      height: calc(100vh - 20px) !important;
+      max-height: 100vh !important;
+      border-radius: 10px;
+      z-index: 1000;
+    }
+    .replay-dialog.minimized {
+      height: 48px !important;
+      overflow: hidden;
+    }
+    .replay-dialog.minimized .replay-dialog-body,
+    .replay-dialog.minimized .replay-footer {
+      display: none !important;
+    }
+    .replay-dialog-header {
+      padding: 10px 16px;
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+      cursor: move;
+    }
+    .replay-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #f0f6fc;
+    }
+    .replay-dialog-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* Session Selector & Record Bar */
+    .replay-session-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(22, 27, 34, 0.85);
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 8px 14px;
+      gap: 12px;
+    }
+    .replay-select {
+      flex: 1;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      color: #f0f6fc;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-family: monospace;
+      outline: none;
+      cursor: pointer;
+    }
+    .replay-select:focus {
+      border-color: #a855f7;
+    }
+
+    /* 5 Analytics Cards */
+    .replay-analytics-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+    }
+    .replay-stat-card {
+      background: rgba(22, 27, 34, 0.8);
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .replay-stat-title {
+      font-size: 10px;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .replay-stat-val {
+      font-size: 17px;
+      font-weight: 700;
+      font-family: monospace;
+      color: #f0f6fc;
+      display: flex;
+      align-items: baseline;
+      gap: 3px;
+    }
+    .replay-stat-val .unit {
+      font-size: 10px;
+      color: #8b949e;
+      font-weight: normal;
+    }
+
+    /* Playback Control Deck */
+    .replay-deck {
+      background: rgba(22, 27, 34, 0.95);
+      border: 1px solid rgba(168, 85, 247, 0.35);
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .replay-scrub-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .replay-slider {
+      flex: 1;
+      accent-color: #a855f7;
+      cursor: pointer;
+      height: 6px;
+    }
+    .replay-time-badge {
+      font-family: monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: #c084fc;
+      background: rgba(168, 85, 247, 0.15);
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+      white-space: nowrap;
+    }
+    .replay-controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .play-btn-main {
+      background: #8957e5;
+      border: none;
+      color: #fff;
+      padding: 6px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .play-btn-main:hover {
+      background: #9a68f7;
+      box-shadow: 0 0 12px rgba(137, 87, 229, 0.5);
+    }
+    .replay-btn-secondary {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s;
+    }
+    .replay-btn-secondary:hover {
+      background: #30363d;
+      color: #fff;
+    }
+    .speed-btn-group {
+      display: inline-flex;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .speed-pill {
+      background: #161b22;
+      border: none;
+      color: #8b949e;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-family: monospace;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .speed-pill.active {
+      background: #a855f7;
+      color: #fff;
+      font-weight: 700;
+    }
+
+    /* Frame Instant Telemetry Breakdown */
+    .replay-instant-box {
+      background: rgba(22, 27, 34, 0.85);
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .replay-instant-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      font-size: 11px;
+      font-family: monospace;
+    }
+    .instant-item {
+      background: rgba(13, 17, 23, 0.6);
+      padding: 6px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(48, 54, 61, 0.5);
+      display: flex;
+      justify-content: space-between;
+    }
+    .instant-key {
+      color: #8b949e;
+    }
+    .instant-val {
+      color: #f0f6fc;
+      font-weight: 600;
+    }
+
+    /* Replay On-Canvas Active Banner */
+    .replay-canvas-banner {
+      position: absolute;
+      top: 65px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(88, 28, 135, 0.92);
+      border: 1px solid rgba(192, 132, 252, 0.6);
+      border-radius: 20px;
+      padding: 5px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      z-index: 100;
+      color: #f3e8ff;
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 15px rgba(168, 85, 247, 0.4);
+      backdrop-filter: blur(8px);
+      animation: modalFadeIn 0.3s ease-out;
+    }
+    .replay-exit-btn {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      color: #fca5a5;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .replay-exit-btn:hover {
+      background: #dc2626;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f0883e" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><circle cx="7" cy="16" r="1.5"/><circle cx="17" cy="16" r="1.5"/></svg>
+      <span>AMR Studio V4 · 工业全栈 AGV 调度与多构型仿真台</span>
+      <span class="badge" id="cmodel-tag">测试车模型</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <button id="btn-open-replay" class="replay-btn" onclick="toggleReplayModal()" title="仿真全量过程记录、轨迹分析与交互式回放中心">
+        <span class="replay-indicator-dot" id="header-replay-dot"></span>
+        <span>🎬 仿真回放</span>
+        <span class="replay-session-count" id="header-replay-count">0 组</span>
+      </button>
+      <button id="btn-open-perf" class="perf-btn" onclick="togglePerfModal()" title="查看树莓派硬件与 ROS/仿真后台实时性能耗用">
+        <span class="perf-indicator-dot"></span>
+        <span>⚡ 树莓派性能</span>
+        <span class="perf-cpu-badge" id="header-perf-badge">CPU --%</span>
+      </button>
+      <button id="btn-open-debug" class="debug-btn" onclick="toggleDebugModal()" title="打开调试控制台与实时事件订阅中心">
+        <span class="debug-indicator-dot"></span>
+        <span>🐞 调试与事件订阅</span>
+        <span class="debug-event-count" id="header-event-count">0</span>
+      </button>
+      <span class="badge" id="nav-badge">● 空闲 (IDLE)</span>
+      <span class="badge online">192.168.11.117:8088</span>
+    </div>
+  </header>
+
+  <!-- DEBUG & REAL-TIME EVENT SUBSCRIPTION MODAL (Non-Blocking) -->
+  <div id="debugModal" class="debug-modal-wrapper" style="display:none;">
+    <div class="debug-dialog" id="debugDialog">
+      <!-- Modal Header -->
+      <div class="debug-dialog-header" id="debugDialogHeader">
+        <div class="debug-title-row">
+          <span style="font-size:16px;">🐞</span>
+          <span>AMR Studio V4 · 实时调试与后台事件订阅中心</span>
+          <span class="badge online" id="debug-status-pill">● 订阅连接正常 (10Hz)</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button class="icon-btn" onclick="toggleDebugDock()" title="切换靠底停靠 / 自由悬浮窗" id="btn-dock-toggle">🗗 自由悬浮</button>
+          <button class="icon-btn" onclick="toggleDebugMinimize()" title="最小化/展开控制台" id="btn-min-toggle">🗕 最小化</button>
+          <button class="icon-btn" onclick="toggleDebugFullscreen()" title="切换全屏视图" id="btn-fullscreen-toggle">⛶ 全屏</button>
+          <button class="icon-btn close-btn" onclick="toggleDebugModal()" title="关闭控制台">✕ 关闭</button>
+        </div>
+      </div>
+
+      <!-- Channel Subscription Checkboxes -->
+      <div class="debug-sub-bar">
+        <div class="sub-bar-title">📡 订阅频道：</div>
+        <label class="sub-chip chassis active" id="chip-chassis">
+          <input type="checkbox" checked onchange="toggleSubCategory('chassis', this.checked)">
+          🏎️ 底盘动力学 <span class="chip-badge" id="badge-chassis">0</span>
+        </label>
+        <label class="sub-chip navigation active" id="chip-navigation">
+          <input type="checkbox" checked onchange="toggleSubCategory('navigation', this.checked)">
+          🧭 调度与导航 <span class="chip-badge" id="badge-navigation">0</span>
+        </label>
+        <label class="sub-chip safety active" id="chip-safety">
+          <input type="checkbox" checked onchange="toggleSubCategory('safety', this.checked)">
+          🛡️ 工业安全与I/O <span class="chip-badge" id="badge-safety">0</span>
+        </label>
+        <label class="sub-chip sensors active" id="chip-sensors">
+          <input type="checkbox" checked onchange="toggleSubCategory('sensors', this.checked)">
+          📡 传感器与雷达 <span class="chip-badge" id="badge-sensors">0</span>
+        </label>
+        <label class="sub-chip system active" id="chip-system">
+          <input type="checkbox" checked onchange="toggleSubCategory('system', this.checked)">
+          ⚡ ROS2话题与系统 <span class="chip-badge" id="badge-system">0</span>
+        </label>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="debug-toolbar">
+        <div class="tool-group">
+          <button class="tool-btn" onclick="toggleAllCategories(true)">全选频道</button>
+          <button class="tool-btn" onclick="toggleAllCategories(false)">清空勾选</button>
+          <span style="color:#30363d">|</span>
+          <button class="tool-btn" id="btn-pause-stream" onclick="toggleStreamPause()">⏸ 暂停流</button>
+          <button class="tool-btn" onclick="clearEventLogs()">🗑️ 清空事件</button>
+          <button class="tool-btn" onclick="exportEventsJson()">⬇️ 导出JSON</button>
+          <span style="color:#30363d">|</span>
+          <label style="font-size:11px; display:inline-flex; align-items:center; gap:5px; cursor:pointer; color:#8b949e;">
+            <input type="checkbox" id="chk-autoscroll" checked onchange="autoScroll = this.checked"> 自动滚屏
+          </label>
+        </div>
+        <div class="tool-group">
+          <select id="levelFilter" class="custom-select" style="width:105px; padding:3px 6px;" onchange="renderEventList()">
+            <option value="all">全部级别</option>
+            <option value="info">INFO 正常</option>
+            <option value="success">SUCCESS 成功</option>
+            <option value="warning">WARN 告警</option>
+            <option value="danger">DANGER 故障/急停</option>
+          </select>
+          <input type="text" id="eventSearch" class="search-box" placeholder="🔍 检索关键词/话题..." oninput="renderEventList()">
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="debug-tabs">
+        <button class="debug-tab active" id="tab-btn-stream" onclick="switchDebugTab('stream')">📜 实时事件瀑布流 (<span id="tab-count-stream">0</span>)</button>
+        <button class="debug-tab" id="tab-btn-topics" onclick="switchDebugTab('topics')">📊 ROS2 话题监视器</button>
+        <button class="debug-tab" id="tab-btn-inject" onclick="switchDebugTab('inject')">⚡ 仿真诊断与测试注入</button>
+      </div>
+
+      <!-- Tab 1: Live Event Stream Waterfall -->
+      <div class="debug-tab-content" id="tab-content-stream">
+        <div class="event-stream-list" id="eventStreamList">
+          <!-- Dynamic Event Cards injected here -->
+        </div>
+      </div>
+
+      <!-- Tab 2: ROS2 Live Topic Inspector -->
+      <div class="debug-tab-content" id="tab-content-topics" style="display:none;">
+        <div class="topics-grid">
+          <!-- /cmd_vel Card -->
+          <div class="topic-card">
+            <div class="topic-card-title">
+              <span>🚀 速度控制话题: /cmd_vel</span>
+              <span class="badge" style="background:rgba(0,255,204,0.1); color:#00ffcc;">geometry_msgs/Twist</span>
+            </div>
+            <div class="topic-card-body" id="topic-card-cmdvel">
+              <div>线速度 Vx: <strong id="insp-cmd-vx" style="color:#00ffcc">0.00 m/s</strong> (前进/后退)</div>
+              <div>横向速度 Vy: <strong id="insp-cmd-vy" style="color:#00ffcc">0.00 m/s</strong> (全向平移)</div>
+              <div>角速度 Wz: <strong id="insp-cmd-wz" style="color:#00ffcc">0.00 rad/s</strong> (原地旋转/转向)</div>
+              <div style="margin-top:6px; color:#8b949e; font-size:10px;">下发模式: 自主导航控制器 (Stanley) / 遥控摇杆</div>
+            </div>
+          </div>
+
+          <!-- /odom Card -->
+          <div class="topic-card">
+            <div class="topic-card-title">
+              <span>📍 里程计反馈: /odom</span>
+              <span class="badge" style="background:rgba(88,166,255,0.1); color:#58a6ff;">nav_msgs/Odometry</span>
+            </div>
+            <div class="topic-card-body" id="topic-card-odom">
+              <div>全局坐标 X: <strong id="insp-odom-x" style="color:#58a6ff">0.00 m</strong> | Y: <strong id="insp-odom-y" style="color:#58a6ff">0.00 m</strong></div>
+              <div>车体航向角 Yaw: <strong id="insp-odom-yaw" style="color:#58a6ff">0.0°</strong> (<span id="insp-odom-yaw-rad">0.00 rad</span>)</div>
+              <div>正交平行状态: <strong id="insp-odom-align" style="color:#3fb950">✅ 严格平行/垂直</strong></div>
+              <div>实际反馈速度: Vx=<span id="insp-odom-vx">0.00</span> m/s, Wz=<span id="insp-odom-wz">0.00</span> r/s</div>
+            </div>
+          </div>
+
+          <!-- /joint_states Card -->
+          <div class="topic-card">
+            <div class="topic-card-title">
+              <span>⚙️ 关节电机执行器: /joint_states</span>
+              <span class="badge" style="background:rgba(188,140,255,0.1); color:#bc8cff;">sensor_msgs/JointState</span>
+            </div>
+            <div class="topic-card-body" id="topic-card-joints">
+              <div>当前活跃底盘: <strong id="insp-chassis-type" style="color:#bc8cff">两轮差速 (Diff-Drive)</strong></div>
+              <div>驱动轮关节: <span id="insp-joints-names" style="font-family:monospace">left_wheel_joint, right_wheel_joint</span></div>
+              <div>转角/弧度位置: <span id="insp-joints-pos" style="font-family:monospace">[0.00, 0.00]</span></div>
+              <div>电机安全状态: <span style="color:#3fb950">正常 (过流保护正常，抱闸闭环释放)</span></div>
+            </div>
+          </div>
+
+          <!-- /io_states Card -->
+          <div class="topic-card">
+            <div class="topic-card-title">
+              <span>🛡️ 工业安全与 I/O 状态: /io_states</span>
+              <span class="badge" style="background:rgba(248,81,73,0.1); color:#f85149;">std_msgs/String (JSON)</span>
+            </div>
+            <div class="topic-card-body" id="topic-card-io">
+              <div>机械急停开关 (E-Stop): <strong id="insp-io-estop" style="color:#3fb950">正常 (未触发)</strong></div>
+              <div>前后安全触边 (Bumper): <strong id="insp-io-bumper" style="color:#3fb950">未受压触发</strong></div>
+              <div>托盘物料光电开关: <strong id="insp-io-cargo" style="color:#c9d1d9">空载 (无货)</strong></div>
+              <div>抱闸状态: <strong id="insp-io-brake" style="color:#3fb950">释放 (正常运行)</strong></div>
+              <div>声光三色塔灯: 绿灯: <span id="insp-io-green" style="color:#3fb950">● ON</span>, 黄灯: <span id="insp-io-yellow">○ OFF</span>, 红灯: <span id="insp-io-red">○ OFF</span></div>
+            </div>
+          </div>
+
+          <!-- /scan Card -->
+          <div class="topic-card">
+            <div class="topic-card-title">
+              <span>📡 激光雷达点云: /scan</span>
+              <span class="badge" style="background:rgba(210,153,34,0.1); color:#d29922;">sensor_msgs/LaserScan</span>
+            </div>
+            <div class="topic-card-body" id="topic-card-scan">
+              <div>扫描线数: <strong style="color:#d29922">360 beams (10Hz)</strong></div>
+              <div>视场角范围: <strong style="color:#d29922">-135° ~ +135° (270° FOV)</strong></div>
+              <div>最近障碍物探测距离: <strong id="insp-scan-min" style="color:#00ffcc">-- m</strong></div>
+              <div>防撞安全余量状态: <strong id="insp-scan-safety" style="color:#3fb950">✅ 畅通安全通道</strong></div>
+            </div>
+          </div>
+
+          <!-- /plan Card -->
+          <div class="topic-card">
+            <div class="topic-card-title">
+              <span>🗺️ 全局路径规划: /plan</span>
+              <span class="badge" style="background:rgba(56,139,253,0.1); color:#58a6ff;">nav_msgs/Path</span>
+            </div>
+            <div class="topic-card-body" id="topic-card-plan">
+              <div>规划引擎: <strong id="insp-plan-engine" style="color:#58a6ff">Dijkstra 拓扑导轨路网</strong></div>
+              <div>当前任务状态: <strong id="insp-plan-status" style="color:#3fb950">IDLE 空闲</strong></div>
+              <div>剩余路程: <strong id="insp-plan-dist" style="color:#58a6ff">0.00 m</strong></div>
+              <div>目标工位坐标: <strong id="insp-plan-target" style="color:#58a6ff">无目标</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Diagnostics & Simulation Fault Injection -->
+      <div class="debug-tab-content" id="tab-content-inject" style="display:none;">
+        <div class="inject-grid">
+          <div class="inject-card">
+            <h4>🛑 机械急停安全切断测试</h4>
+            <p>向底层仿真系统注入机械急停按下信号，切断底盘动力输出并锁死电磁抱闸。</p>
+            <div style="display:flex; gap:6px;">
+              <button class="inject-btn danger" onclick="triggerTestIO('di_estop', true)">按下急停 🛑</button>
+              <button class="inject-btn" onclick="triggerTestIO('di_estop', false)">复位解除 🟢</button>
+            </div>
+          </div>
+
+          <div class="inject-card">
+            <h4>💥 安全防撞触边动作测试</h4>
+            <p>模拟 AGV 前方柔性防撞边缘碰擦障碍物，触发紧急防撞联锁减速停车。</p>
+            <div style="display:flex; gap:6px;">
+              <button class="inject-btn danger" onclick="triggerTestIO('di_bumper_front', true)">触碰触边 💥</button>
+              <button class="inject-btn" onclick="triggerTestIO('di_bumper_front', false)">触边弹回 🟢</button>
+            </div>
+          </div>
+
+          <div class="inject-card">
+            <h4>📦 货物托盘到位光电测试</h4>
+            <p>模拟光电对射开关检测到物料托盘装载或卸载，更新数字 I/O 输入通道。</p>
+            <div style="display:flex; gap:6px;">
+              <button class="inject-btn" onclick="triggerTestIO('di_cargo_present', true)">装入托盘 📦</button>
+              <button class="inject-btn" onclick="triggerTestIO('di_cargo_present', false)">移出托盘 ⚪</button>
+            </div>
+          </div>
+
+          <div class="inject-card">
+            <h4>🚧 随机注入动态干扰路障</h4>
+            <p>在十字导轨主干道上随机布置 3 处障碍物，验证实时重规划与雷达避障。</p>
+            <div style="display:flex; gap:6px;">
+              <button class="inject-btn" onclick="randomObstacles()">布置路障 🚧</button>
+              <button class="inject-btn" onclick="clearObstacles()">清空路障 🧹</button>
+            </div>
+          </div>
+
+          <div class="inject-card">
+            <h4>📡 模拟激光雷达近距避障预警</h4>
+            <p>发送自定义测试警报帧到事件中心，检验安全监听系统与告警提示。</p>
+            <button class="inject-btn" onclick="injectCustomDebugEvent('sensors', 'LIDAR_ALERT', 'warning', '测试: 激光雷达近距预警', '模拟前方 0.65m 处出现突发移动人员阻挡')">注入雷达预警 📡</button>
+          </div>
+
+          <div class="inject-card">
+            <h4>🛠️ 注入自定义测试诊断帧</h4>
+            <p>向 ROS2 系统总线广播自定义调试日志，用于验证事件流订阅与数据流转。</p>
+            <button class="inject-btn" onclick="injectCustomDebugEvent('system', 'MANUAL_DIAG', 'info', '测试: 手动诊断心跳包', '操作员在 Web 调试控制台执行了一次系统链路自检')">注入诊断帧 ⚡</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer Statistics -->
+      <div class="debug-footer">
+        <div>
+          已接收事件总数: <strong id="stat-total" style="color:#58a6ff">0</strong> 帧 |
+          当前列表展示: <strong id="stat-displayed" style="color:#3fb950">0</strong> 帧 |
+          活动订阅频道: <strong id="stat-channels" style="color:#bc8cff">5 / 5</strong>
+        </div>
+        <div style="display:flex; gap:16px;">
+          <span>事件速率: <strong id="stat-rate" style="color:#00ffcc">--</strong> ev/s</span>
+          <span>通信通道: <strong style="color:#3fb950">REST Event Bus</strong></span>
+          <span>后端版本: <strong style="color:#f0883e">AMR-Studio-V4.2</strong></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RASPBERRY PI PERFORMANCE MONITOR MODAL (Non-Blocking) -->
+  <div id="perfModal" class="perf-modal-wrapper" style="display:none;">
+    <div class="perf-dialog" id="perfDialog">
+      <!-- Modal Header -->
+      <div class="perf-dialog-header" id="perfDialogHeader">
+        <div class="perf-title-row">
+          <span style="font-size:16px;">⚡</span>
+          <span>树莓派硬件与 ROS/仿真后台实时性能耗用监控</span>
+          <span class="badge online" id="perf-status-pill">● 采样正常 (1Hz)</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <select id="perf-interval-select" onchange="changePerfInterval(this.value)" style="background:#21262d; border:1px solid #30363d; color:#c9d1d9; padding:3px 8px; border-radius:4px; font-size:11px;">
+            <option value="1000">1秒刷新</option>
+            <option value="500">0.5秒高频</option>
+            <option value="2000">2秒节流</option>
+          </select>
+          <button class="icon-btn" onclick="togglePerfDock()" title="切换靠底停靠 / 自由悬浮窗" id="btn-perf-dock-toggle">🗗 自由悬浮</button>
+          <button class="icon-btn" onclick="togglePerfMinimize()" title="最小化/展开窗口" id="btn-perf-min-toggle">🗕 最小化</button>
+          <button class="icon-btn" onclick="togglePerfFullscreen()" title="切换全屏视图" id="btn-perf-fullscreen-toggle">⛶ 全屏</button>
+          <button class="icon-btn close-btn" onclick="togglePerfModal()" title="关闭监控窗口">✕ 关闭</button>
+        </div>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="perf-dialog-body">
+        <!-- 4 Metric Cards Grid -->
+        <div class="perf-cards-grid">
+          <!-- Card 1: CPU -->
+          <div class="perf-card">
+            <div class="perf-card-title">
+              <span>主机 CPU 总体负荷</span>
+              <span id="perf-cpu-freq" style="font-family:monospace; color:#38bdf8;">-- MHz</span>
+            </div>
+            <div class="perf-card-val">
+              <span id="perf-cpu-val">--</span><span class="unit">%</span>
+            </div>
+            <div class="perf-mini-bar-bg">
+              <div class="perf-mini-bar-fill" id="perf-cpu-bar" style="width:0%;"></div>
+            </div>
+            <div class="perf-cores-box">
+              <div class="perf-core-cell"><div class="perf-core-fill" id="core-bar-0"></div><span class="perf-core-label">C0: <span id="core-val-0">--%</span></span></div>
+              <div class="perf-core-cell"><div class="perf-core-fill" id="core-bar-1"></div><span class="perf-core-label">C1: <span id="core-val-1">--%</span></span></div>
+              <div class="perf-core-cell"><div class="perf-core-fill" id="core-bar-2"></div><span class="perf-core-label">C2: <span id="core-val-2">--%</span></span></div>
+              <div class="perf-core-cell"><div class="perf-core-fill" id="core-bar-3"></div><span class="perf-core-label">C3: <span id="core-val-3">--%</span></span></div>
+            </div>
+          </div>
+
+          <!-- Card 2: Memory (RAM) -->
+          <div class="perf-card">
+            <div class="perf-card-title">
+              <span>主机物理内存 (RAM)</span>
+              <span id="perf-ram-pct" style="font-family:monospace; color:#a78bfa;">--%</span>
+            </div>
+            <div class="perf-card-val">
+              <span id="perf-ram-used">--</span><span class="unit">/ <span id="perf-ram-total">--</span> MB</span>
+            </div>
+            <div class="perf-mini-bar-bg">
+              <div class="perf-mini-bar-fill" id="perf-ram-bar" style="width:0%; background:#a78bfa;"></div>
+            </div>
+            <div class="perf-sub-text" id="perf-ram-avail">可用: -- MB</div>
+          </div>
+
+          <!-- Card 3: Raspberry Pi Hardware & Load -->
+          <div class="perf-card">
+            <div class="perf-card-title">
+              <span>树莓派硬件状态</span>
+              <span style="color:#10b981;">Raspberry Pi 4B</span>
+            </div>
+            <div class="perf-card-val">
+              <span id="perf-temp-val" style="color:#fbbf24;">--</span><span class="unit">°C</span>
+            </div>
+            <div class="perf-sub-text" id="perf-load-avg">负载: --, --, --</div>
+            <div class="perf-sub-text" id="perf-platform-info">ARM Cortex-A72 4-Core</div>
+          </div>
+
+          <!-- Card 4: ROS & Simulation Combined -->
+          <div class="perf-card" style="border-color:rgba(56,189,248,0.4);">
+            <div class="perf-card-title">
+              <span style="color:#38bdf8;">ROS 与仿真进程总计</span>
+              <span id="perf-ros-count" style="font-family:monospace; color:#38bdf8;">4 个关键进程</span>
+            </div>
+            <div class="perf-card-val">
+              <span id="perf-ros-cpu" style="color:#38bdf8;">--</span><span class="unit">% CPU</span>
+            </div>
+            <div class="perf-mini-bar-bg">
+              <div class="perf-mini-bar-fill" id="perf-ros-bar" style="width:0%; background:#38bdf8;"></div>
+            </div>
+            <div class="perf-sub-text" id="perf-ros-ram">占用内存: -- MB (--%)</div>
+          </div>
+        </div>
+
+        <!-- 60s Trend Canvas -->
+        <div class="perf-chart-box">
+          <div class="perf-chart-header">
+            <span>📈 60 秒动态资源耗用趋势曲线</span>
+            <div class="perf-chart-legend">
+              <span class="legend-tag"><span class="legend-dot" style="background:#38bdf8;"></span>主机 CPU (%)</span>
+              <span class="legend-tag"><span class="legend-dot" style="background:#f59e0b;"></span>ROS/仿真合计 CPU (%)</span>
+              <span class="legend-tag"><span class="legend-dot" style="background:#a78bfa;"></span>物理内存 RAM (%)</span>
+            </div>
+          </div>
+          <div class="perf-canvas-wrap">
+            <canvas id="perfChartCanvas"></canvas>
+          </div>
+        </div>
+
+        <!-- Target Process Table -->
+        <div class="perf-proc-box">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-size:12px; font-weight:600; color:#c9d1d9;">🎯 ROS 与仿真后台专用进程资源明细</span>
+            <span style="font-size:11px; color:#8b949e;">实时跟踪：agv_simulation / web_teleop / map_server / lifecycle</span>
+          </div>
+          <table class="perf-proc-table">
+            <thead>
+              <tr>
+                <th style="width:28%;">进程与功能模块</th>
+                <th style="width:10%;">PID</th>
+                <th style="width:12%;">状态 / 线程</th>
+                <th style="width:20%;">CPU 占用率</th>
+                <th style="width:15%;">物理内存 (RSS)</th>
+                <th style="width:15%;">内存占比</th>
+              </tr>
+            </thead>
+            <tbody id="perf-proc-tbody">
+              <tr><td colspan="6" style="text-align:center; color:#8b949e; padding:16px;">正在采集进程性能指标...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="perf-footer">
+        <span id="perf-footer-time">最近更新: --</span>
+        <div style="display:flex; gap:12px;">
+          <span>提示：窗口可靠底停靠或自由拖拽悬浮，不影响主地图交互与车辆控制</span>
+          <button class="inject-btn" onclick="fetchPerfDataImmediately()" style="padding:2px 8px;">立即刷新</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIMULATION REPLAY & MISSION FLIGHT RECORDER MODAL (Non-Blocking) -->
+  <div id="replayModal" class="replay-modal-wrapper" style="display:none;">
+    <div class="replay-dialog" id="replayDialog">
+      <!-- Modal Header -->
+      <div class="replay-dialog-header" id="replayDialogHeader">
+        <div class="replay-title-row">
+          <span style="font-size:16px;">🎬</span>
+          <span>仿真全流程记录、轨迹分析与交互式回放中心</span>
+          <span class="badge" id="replay-recording-pill" style="background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.4); color:#fca5a5;">● 实时录制就绪</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button class="icon-btn" onclick="toggleReplayDock()" title="切换靠底停靠 / 自由悬浮窗" id="btn-replay-dock-toggle">🗗 自由悬浮</button>
+          <button class="icon-btn" onclick="toggleReplayMinimize()" title="最小化/展开窗口" id="btn-replay-min-toggle">🗕 最小化</button>
+          <button class="icon-btn" onclick="toggleReplayFullscreen()" title="切换全屏视图" id="btn-replay-fullscreen-toggle">⛶ 全屏</button>
+          <button class="icon-btn close-btn" onclick="toggleReplayModal()" title="关闭回放窗口">✕ 关闭</button>
+        </div>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="replay-dialog-body">
+        <!-- Top Controls: Session Selector & Capture Trigger -->
+        <div class="replay-top-bar">
+          <div style="display:flex; align-items:center; gap:10px; flex:1;">
+            <span style="font-size:12px; color:#8b949e; font-weight:600;">选择航迹数据段:</span>
+            <select class="custom-select replay-session-select" id="replaySessionSelect" onchange="onSelectReplaySession(this.value)">
+              <option value="">-- 请选择或等待导航任务生成飞行记录 --</option>
+            </select>
+            <button class="replay-btn-secondary" onclick="fetchReplaySessions()" title="刷新记录列表">🔄 刷新</button>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button class="replay-btn-secondary" id="btn-manual-record" onclick="toggleManualRecording()" style="border-color:rgba(239,68,68,0.5); color:#f87171;">
+              <span id="manual-record-icon">⏺</span> <span id="manual-record-text">开始手动录制</span>
+            </button>
+            <button class="replay-btn-secondary" onclick="captureRollingSession(30)" title="提取最近30秒的实时飞行缓存为独立回放会话">
+              ⏱️ 提取近30秒缓存
+            </button>
+            <button class="replay-btn-secondary" id="btn-export-json" onclick="downloadSessionJSON()" style="background:#238636; border-color:#2ea043; color:#fff;" disabled>
+              📥 导出数据包 (.json)
+            </button>
+          </div>
+        </div>
+
+        <!-- 5 Analytical Summary Metric Cards -->
+        <div class="replay-stats-grid">
+          <div class="replay-stat-card">
+            <div class="replay-stat-title">总运行航程</div>
+            <div class="replay-stat-val"><span id="stat-replay-dist">0.00</span><span class="unit">米 (m)</span></div>
+          </div>
+          <div class="replay-stat-card">
+            <div class="replay-stat-title">任务持续时长</div>
+            <div class="replay-stat-val"><span id="stat-replay-duration">0.0</span><span class="unit">秒 (s)</span></div>
+          </div>
+          <div class="replay-stat-card">
+            <div class="replay-stat-title">峰值线速度</div>
+            <div class="replay-stat-val"><span id="stat-replay-peak-vel">0.00</span><span class="unit">m/s</span></div>
+          </div>
+          <div class="replay-stat-card">
+            <div class="replay-stat-title">平均行驶速度</div>
+            <div class="replay-stat-val"><span id="stat-replay-avg-vel">0.00</span><span class="unit">m/s</span></div>
+          </div>
+          <div class="replay-stat-card">
+            <div class="replay-stat-title">激光雷达最近障碍物</div>
+            <div class="replay-stat-val"><span id="stat-replay-min-obs">--</span><span class="unit">米 (m)</span></div>
+          </div>
+        </div>
+
+        <!-- Interactive Player Control Deck -->
+        <div class="replay-deck">
+          <div class="replay-scrub-row">
+            <input type="range" class="replay-slider" id="replayScrubber" min="0" max="0" value="0" step="1" oninput="onReplaySeek(this.value)">
+            <span class="replay-time-badge" id="replayTimeDisplay">00:00.0 / 00:00.0 (帧: 0 / 0)</span>
+          </div>
+
+          <div class="replay-controls-row">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <button class="replay-btn-secondary" onclick="restartReplay()" title="跳转至起点">⏮ 重置</button>
+              <button class="replay-btn-secondary" onclick="stepReplayFrame(-1)" title="后退1帧">⏪ 上一帧</button>
+              <button class="play-btn-main" id="btn-replay-play" onclick="toggleReplayPlay()">
+                <span id="play-btn-icon">▶</span> <span id="play-btn-text">播放回放</span>
+              </button>
+              <button class="replay-btn-secondary" onclick="stepReplayFrame(1)" title="前进1帧">下一帧 ⏩</button>
+              <button class="replay-btn-secondary" onclick="exitReplayMode()" title="退出回放模式，恢复实时监控">⏹ 退出回放</button>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:#8b949e;">
+                <span>循环播放:</span>
+                <input type="checkbox" id="replayLoopCheck" style="accent-color:#a855f7; cursor:pointer;" checked>
+              </div>
+              <div style="display:flex; align-items:center; gap:4px; font-size:11px; color:#8b949e;">
+                <span>倍速:</span>
+                <div class="speed-btn-group">
+                  <button class="speed-pill" onclick="setReplaySpeed(0.5, this)">0.5x</button>
+                  <button class="speed-pill active" onclick="setReplaySpeed(1.0, this)">1.0x</button>
+                  <button class="speed-pill" onclick="setReplaySpeed(2.0, this)">2.0x</button>
+                  <button class="speed-pill" onclick="setReplaySpeed(4.0, this)">4.0x</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Frame Instant Telemetry Breakdown -->
+        <div class="replay-instant-box">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong style="font-size:11px; color:#c084fc;">📡 当前帧全量快照状态解码 (Pose · Speeds · IO · Perception)</strong>
+            <span id="replay-frame-timestamp" style="font-size:11px; color:#8b949e; font-family:monospace;">UTC: --:--:--.--</span>
+          </div>
+          <div class="replay-instant-grid">
+            <div class="instant-item"><span class="instant-key">车体位姿 (X, Y):</span><span class="instant-val" id="instant-pos">0.00, 0.00 m</span></div>
+            <div class="instant-item"><span class="instant-key">航向角 Yaw:</span><span class="instant-val" id="instant-yaw">0.00 rad (0.0°)</span></div>
+            <div class="instant-item"><span class="instant-key">实际线速 / 角速:</span><span class="instant-val" id="instant-vel">0.00 m/s, 0.00 r/s</span></div>
+            <div class="instant-item"><span class="instant-key">下发指令 Cmd:</span><span class="instant-val" id="instant-cmd">vx:0.0, wz:0.0</span></div>
+            <div class="instant-item"><span class="instant-key">急停 / 触边 / 货载:</span><span class="instant-val" id="instant-io">正常 / 解除 / 空载</span></div>
+            <div class="instant-item"><span class="instant-key">电量 / 运行状态:</span><span class="instant-val" id="instant-status">100% / IDLE</span></div>
+            <div class="instant-item"><span class="instant-key">规划路径点数:</span><span class="instant-val" id="instant-path-pts">0 点</span></div>
+            <div class="instant-item"><span class="instant-key">雷达近距障碍:</span><span class="instant-val" id="instant-obs-dist">-- m</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="replay-footer">
+        <span id="replay-footer-info">提示：回放时地图主画布将高亮回溯运动轨迹、规划线与雷达扫描；支持拖拽时间轴任意定位</span>
+        <div style="display:flex; gap:12px;">
+          <span>采样率: <strong style="color:#c084fc">10 Hz (100ms)</strong></span>
+          <span>存储协议: <strong style="color:#34d399">JSON AMR-Flight-Log V1</strong></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-container">
+    <div class="canvas-panel" id="canvasContainer">
+      <canvas id="simCanvas"></canvas>
+
+      <!-- 仿真回放状态浮标 (Replay On-Canvas Banner) -->
+      <div class="replay-canvas-banner" id="replayCanvasBanner" style="display:none;">
+        <span class="replay-banner-dot"></span>
+        <span id="replay-banner-title" style="font-weight:600;">正在回放仿真航迹: 会话 #--</span>
+        <span id="replay-banner-time" style="font-family:monospace; background:rgba(0,0,0,0.3); padding:1px 6px; border-radius:4px;">00:00.0</span>
+        <button class="replay-exit-btn" onclick="exitReplayMode()" title="退出回放模式">退出回放 ✕</button>
+      </div>
+
+      <!-- 顶部高可见度多场景地图切换栏 (High-Visibility Multi-Map Switcher) -->
+      <div class="map-scenario-switcher" id="mapScenarioSwitcher">
+        <div class="scenario-switch-title">
+          <span class="scenario-live-badge">🗺️ 地图场景</span>
+        </div>
+        <div class="scenario-pills">
+          <button class="scenario-pill active" data-sc="grid_9_square" onclick="switchScenario('grid_9_square')" title="正方形九宫格智能立体仓 (3×3 矩阵高密立体仓与正交路网)">
+            <span class="sc-icon">🔲</span>
+            <span class="sc-meta">
+              <span class="sc-name">正方形九宫格</span>
+              <span class="sc-sub">3×3 矩阵高密仓</span>
+            </span>
+          </button>
+          <button class="scenario-pill" data-sc="narrow_aisle" onclick="switchScenario('narrow_aisle')" title="高密多巷道立体库 (4条窄巷道垂直高架与调道干线)">
+            <span class="sc-icon">🏬</span>
+            <span class="sc-meta">
+              <span class="sc-name">多巷道立体库</span>
+              <span class="sc-sub">高架窄巷道</span>
+            </span>
+          </button>
+          <button class="scenario-pill" data-sc="rect_loop" onclick="switchScenario('rect_loop')" title="长方形环线制造车间 (长方形双岛柔性环行主干线)">
+            <span class="sc-icon">🔄</span>
+            <span class="sc-meta">
+              <span class="sc-name">长方形环线</span>
+              <span class="sc-sub">柔性双岛生产线</span>
+            </span>
+          </button>
+          <button class="scenario-pill" data-sc="standard_cross" onclick="switchScenario('standard_cross')" title="标准十字仓储物流中心 (四大存储区十字通道与外围环线)">
+            <span class="sc-icon">➕</span>
+            <span class="sc-meta">
+              <span class="sc-name">标准十字仓</span>
+              <span class="sc-sub">十字主干枢纽</span>
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div class="canvas-overlay">
+        <div><strong>💡 任务交互：</strong> 在地图上<span style="color:#00ffcc">直接点击任意位置</span>下发自主导航任务</div>
+        <div><strong>🗺️ 路径规划：</strong> <span style="color:#00ffcc" id="overlay-planner">Dijkstra 拓扑路网 (/plan)</span></div>
+        <div><strong>🤖 仿真底盘：</strong> <span style="color:#f0883e" id="overlay-chassis">两轮差速 (Diff-Drive)</span></div>
+      </div>
+      <div class="map-controls">
+        <button class="map-btn" onclick="zoomIn()" title="放大地图">➕ 放大</button>
+        <button class="map-btn" onclick="zoomOut()" title="缩小地图">➖ 缩小</button>
+        <button class="map-btn" onclick="resetView()" title="重置居中">⟲ 居中</button>
+      </div>
+    </div>
+
+    <div class="side-panel">
+      <!-- 构型与规划引擎选择 -->
+      <div class="card">
+        <h3><span>🛠️ 场景地图与底盘规划器配置</span></h3>
+        <div class="config-row" style="margin-bottom:8px;">
+          <select class="custom-select" id="scenarioSelect" onchange="switchScenario(this.value)" style="width:100%; border-color:var(--cyan); font-weight:600;">
+            <option value="grid_9_square" selected>🔲 场景1: 正方形九宫格智能立体仓</option>
+            <option value="narrow_aisle">🏬 场景2: 高密多巷道立体库 (VNA)</option>
+            <option value="rect_loop">🔄 场景3: 长方形环线制造车间</option>
+            <option value="standard_cross">➕ 场景4: 标准十字仓储物流中心</option>
+          </select>
+        </div>
+        <div class="config-row">
+          <select class="custom-select" id="chassisSelect" onchange="switchChassis(this.value)">
+            <option value="diff_drive">🛞 两轮差速 (Diff-Drive)</option>
+            <option value="single_steer">🚜 单舵轮叉车 (Single-Steer)</option>
+            <option value="dual_steer">🦀 双舵轮全向 (Dual-Steer)</option>
+          </select>
+          <select class="custom-select" id="plannerSelect" onchange="switchPlanner(this.value)">
+            <option value="dijkstra" selected>🕸️ Dijkstra 拓扑路网 (安全无穿墙)</option>
+            <option value="astar">⚡ A* 启发式网格规划</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 仓储任务调度中心 -->
+      <div class="card">
+        <h3>
+          <span>🏭 仓储任务调度中心</span>
+          <span style="font-size:11px; color:var(--cyan);" id="target-coord">无目标</span>
+        </h3>
+        <div class="mission-grid" id="missionGrid">
+          <button class="mission-btn" onclick="dispatchMission(4.5, 0.0, '工位 A (上料)', 0.0)">
+            <span>📥 工位 A (上料)</span>
+            <span style="font-size:10px; color:var(--text-dim);">(4.5, 0.0)</span>
+          </button>
+          <button class="mission-btn" onclick="dispatchMission(-4.5, 0.0, '工位 B (出库)', 3.14)">
+            <span>📤 工位 B (出库)</span>
+            <span style="font-size:10px; color:var(--text-dim);">(-4.5, 0.0)</span>
+          </button>
+          <button class="mission-btn" onclick="dispatchMission(0.0, -5.5, '自动充电桩', -1.57)">
+            <span>⚡ 自动充电桩</span>
+            <span style="font-size:10px; color:var(--text-dim);">(0.0, -5.5)</span>
+          </button>
+          <button class="mission-btn" onclick="dispatchMission(0.0, 4.0, '工位 C (质检)', 1.57)">
+            <span>🔬 工位 C (质检)</span>
+            <span style="font-size:10px; color:var(--text-dim);">(0.0, 4.0)</span>
+          </button>
+          <button class="mission-btn" onclick="dispatchMission(0.0, 0.0, '待命中心', 0.0)">
+            <span>🏠 待命中心</span>
+            <span style="font-size:10px; color:var(--text-dim);">(0.0, 0.0)</span>
+          </button>
+          <button class="mission-btn cancel" onclick="cancelMission()">
+            <span>⏹️ 中止 / 取消导航任务</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 仓储拓扑导引网与动态干扰路障 -->
+      <div class="card">
+        <h3>
+          <span>🚧 拓扑导轨与动态干扰路障</span>
+          <span style="font-size:11px; color:var(--yellow);" id="obs-count">路障: 0 个</span>
+        </h3>
+        <div class="config-row" style="margin-bottom:6px;">
+          <button class="mission-btn" style="flex:1;" onclick="randomObstacles()">
+            <span>🎲 随机布置路障</span>
+          </button>
+          <button class="mission-btn" style="flex:1;" onclick="clearObstacles()">
+            <span>🧹 清空所有路障</span>
+          </button>
+        </div>
+        <div class="config-row">
+          <button class="mission-btn" id="btn-click-mode" style="width:100%; font-size:11px; padding:7px;" onclick="toggleClickMode()">
+            <span id="click-mode-label">🎯 地图点击: [ 目标导航 ] (点击切换为放置路障)</span>
+          </button>
+        </div>
+        <div style="font-size:10px; color:var(--text-dim); margin-top:4px; line-height:1.4;">
+          💡 蓝青色虚线为仓储拓扑导轨，黄色斜纹方块为动态路障。激光雷达实时击中路障，A* 与 Dijkstra 规划器自动识别并绕行阻断。
+        </div>
+      </div>
+
+      <!-- 工业数字量 I/O 与安全联锁 -->
+      <div class="card">
+        <h3><span>🚨 工业安全联锁与数字 I/O</span></h3>
+        <div class="tower-indicator">
+          <span style="font-size:10px; color:var(--text-dim);">声光塔灯:</span>
+          <div class="light-bulb red" id="light-red"></div>
+          <div class="light-bulb yellow" id="light-yellow"></div>
+          <div class="light-bulb green on" id="light-green"></div>
+          <span style="font-size:11px; margin-left:8px;" id="brake-status">抱闸: 释放(允许运行)</span>
+        </div>
+        <div class="io-grid">
+          <button class="io-btn" id="btn-estop" onclick="toggleIO('di_estop')">
+            <span>🛑 机械急停开关</span>
+            <span id="val-estop">正常</span>
+          </button>
+          <button class="io-btn" id="btn-bumper" onclick="toggleIO('di_bumper_front')">
+            <span>🛡️ 安全触边碰触</span>
+            <span id="val-bumper">未触发</span>
+          </button>
+          <button class="io-btn" id="btn-cargo" onclick="toggleIO('di_cargo_present')">
+            <span>📦 托盘货物在位</span>
+            <span id="val-cargo">无货</span>
+          </button>
+          <button class="io-btn" id="btn-lift" onclick="toggleLift()">
+            <span>🏗️ 顶升机构动作</span>
+            <span id="val-lift">降下到位</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 实时遥测指标 -->
+      <div class="card">
+        <h3>实时位姿与动力学遥测</h3>
+        <div class="telemetry-grid">
+          <div class="tel-item">
+            <div class="tel-label">X 坐标</div>
+            <div class="tel-val" id="val-x">0.00 m</div>
+          </div>
+          <div class="tel-item">
+            <div class="tel-label">Y 坐标</div>
+            <div class="tel-val" id="val-y">0.00 m</div>
+          </div>
+          <div class="tel-item">
+            <div class="tel-label">航向角</div>
+            <div class="tel-val" id="val-yaw">0.0°</div>
+          </div>
+          <div class="tel-item">
+            <div class="tel-label">线速度 vx</div>
+            <div class="tel-val" id="val-vx">0.00 m/s</div>
+          </div>
+          <div class="tel-item">
+            <div class="tel-label">横移速度 vy</div>
+            <div class="tel-val" id="val-vy">0.00 m/s</div>
+          </div>
+          <div class="tel-item">
+            <div class="tel-label">角速度 ω</div>
+            <div class="tel-val" id="val-wz">0.00 r/s</div>
+          </div>
+          <div class="tel-item" style="grid-column: span 2;">
+            <div class="tel-label">航向姿态状态 (正交/平行)</div>
+            <div class="tel-val" id="val-heading-state" style="color:var(--green); font-size:12px;">✅ 平行态 (0.0°)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 视觉 AprilTag 地标 -->
+      <div class="card">
+        <h3><span>📷 视觉 AprilTag 地标检测</span></h3>
+        <div id="vision-list" style="font-size:11px; color:var(--text-dim); line-height:1.5;">
+          未检测到视野内二维码
+        </div>
+      </div>
+
+      <!-- 手动应急接管 -->
+      <div class="card">
+        <h3>手动遥控接管 (WASD / 虚拟摇杆)</h3>
+        <div class="joystick-container">
+          <div class="joystick-base" id="joyBase">
+            <div class="joystick-handle" id="joyHandle"></div>
+          </div>
+          <div style="font-size:11px; color:var(--text-dim); text-align:center;">
+            按 <strong>W/A/S/D</strong> 或拖拽手柄可随时手动介入遥控
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('canvasContainer');
+
+    let telemetry = {
+      x: 0, y: 0, yaw: 0, vx: 0, vy: 0, wz: 0,
+      chassis_type: "diff_drive", planner_type: "dijkstra",
+      scan_ranges: [], scan_angle_min: -2.35, scan_angle_max: 2.35, scan_angle_inc: 0.013,
+      plan_path: [], target_goal: null, nav_status: "IDLE", nav_dist_rem: 0.0,
+      vision_markers: [],
+      io_states: {
+        inputs: { di_estop: false, di_bumper_front: false, di_cargo_present: false },
+        outputs: { do_brake_release: true, do_tower_green: true, do_tower_yellow: false, do_tower_red: false },
+        is_emergency_stop: false
+      }
+    };
+
+    let trail = [];
+    const MAX_TRAIL = 150;
+    let SCALE = 50; // Enlarge default scale so labels and elements are crisp and large
+    let panOffset = { x: 0, y: 0 };
+    let isPanning = false;
+    let startPan = { x: 0, y: 0 };
+    let dragDistance = 0;
+
+    // High-Precision Kinematic Extrapolator with Continuous Error-Decay (Zero Stutter, 60/120 FPS Fluid Motion)
+    let renderPose = {
+      x: 0.0,
+      y: 0.0,
+      yaw: 0.0,
+      vx: 0.0,
+      vy: 0.0,
+      wz: 0.0,
+      errX: 0.0,
+      errY: 0.0,
+      errYaw: 0.0,
+      initialized: false,
+      lastTelemetryTime: 0
+    };
+
+    function onNewTelemetryReceived(data, rttMs = 25) {
+      const now = performance.now();
+      if (!renderPose.initialized) {
+        renderPose.x = data.x;
+        renderPose.y = data.y;
+        renderPose.yaw = data.yaw;
+        renderPose.vx = data.vx || 0.0;
+        renderPose.vy = data.vy || 0.0;
+        renderPose.wz = data.wz || 0.0;
+        renderPose.errX = 0.0;
+        renderPose.errY = 0.0;
+        renderPose.errYaw = 0.0;
+        renderPose.lastTelemetryTime = now;
+        renderPose.initialized = true;
+        return;
+      }
+
+      // Smooth velocity setpoint tracking
+      renderPose.vx = data.vx || 0.0;
+      renderPose.vy = data.vy || 0.0;
+      renderPose.wz = data.wz || 0.0;
+
+      // Dead-reckoning network latency compensation:
+      // Project the server telemetry snapshot forward to current client timestamp 'now'
+      // to eliminate the backward rubber-banding lag offset.
+      const latencySec = Math.min(0.20, Math.max(0.005, (rttMs / 2.0) / 1000.0));
+      const cosY = Math.cos(data.yaw);
+      const sinY = Math.sin(data.yaw);
+      const targetX = data.x + ((data.vx || 0.0) * cosY - (data.vy || 0.0) * sinY) * latencySec;
+      const targetY = data.y + ((data.vx || 0.0) * sinY + (data.vy || 0.0) * cosY) * latencySec;
+      const targetYaw = data.yaw + (data.wz || 0.0) * latencySec;
+
+      // Discrepancy between forward-integrated pose and time-aligned authoritative telemetry
+      const dx = targetX - renderPose.x;
+      const dy = targetY - renderPose.y;
+      // Mathematical modulo into [-pi, +pi] via atan2 to prevent JS % negative remainder bug at +/-180 deg
+      const dyaw = Math.atan2(Math.sin(targetYaw - renderPose.yaw), Math.cos(targetYaw - renderPose.yaw));
+
+      // Teleportation / large jump safeguard (> 1.5 meters)
+      if (Math.hypot(dx, dy) > 1.5) {
+        renderPose.x = targetX;
+        renderPose.y = targetY;
+        renderPose.yaw = targetYaw;
+        renderPose.errX = 0.0;
+        renderPose.errY = 0.0;
+        renderPose.errYaw = 0.0;
+      } else {
+        // Accumulate into continuous error buffer for frame-rate-independent decay
+        renderPose.errX = dx;
+        renderPose.errY = dy;
+        renderPose.errYaw = dyaw;
+      }
+      renderPose.lastTelemetryTime = now;
+    }
+
+    function zoomIn() {
+      SCALE = Math.min(110, Math.round(SCALE * 1.2));
+    }
+    function zoomOut() {
+      SCALE = Math.max(25, Math.round(SCALE / 1.2));
+    }
+    function resetView() {
+      SCALE = 50;
+      panOffset = { x: 0, y: 0 };
+    }
+
+    function resizeCanvas() {
+      canvas.width = container.clientWidth;
+      canvas.height = container.clientHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Map Pan (Drag) and Zoom (Wheel) Controls
+    canvas.addEventListener('mousedown', (e) => {
+      isPanning = true;
+      startPan = { x: e.clientX - panOffset.x, y: e.clientY - panOffset.y };
+      dragDistance = 0;
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!isPanning) return;
+      panOffset.x = e.clientX - startPan.x;
+      panOffset.y = e.clientY - startPan.y;
+      dragDistance += Math.hypot(e.movementX, e.movementY);
+    });
+    window.addEventListener('mouseup', () => {
+      isPanning = false;
+    });
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
+      SCALE = Math.max(25, Math.min(110, Math.round(SCALE * zoomFactor)));
+    }, { passive: false });
+
+    // High-frequency Adaptive Telemetry Polling with Network Latency Profiling
+    let needFullTelemetry = true;
+    let isFetching = false;
+    let lastUIUpdateTime = 0;
+    async function startTelemetryLoop() {
+      while (true) {
+        if (!isFetching) {
+          isFetching = true;
+          const t0 = performance.now();
+          try {
+            const url = needFullTelemetry ? '/api/telemetry?full=1' : '/api/telemetry';
+            const res = await fetch(url);
+            const rtt = performance.now() - t0;
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.x !== undefined) {
+                if (needFullTelemetry && data.scenario_metadata) {
+                  needFullTelemetry = false;
+                }
+                telemetry = Object.assign(telemetry || {}, data);
+                onNewTelemetryReceived(data, rtt);
+                const now = performance.now();
+                if (now - lastUIUpdateTime > 90) { // 11Hz UI DOM updates, zero layout thrashing
+                  lastUIUpdateTime = now;
+                  updateUI();
+                }
+              }
+            }
+          } catch (e) {}
+          isFetching = false;
+        }
+        await new Promise(r => setTimeout(r, 40));
+      }
+    }
+    startTelemetryLoop();
+
+    function updatePoseCounters(pose) {
+      if (!pose) return;
+      const elX = document.getElementById('val-x');
+      const elY = document.getElementById('val-y');
+      const elYaw = document.getElementById('val-yaw');
+      const elVx = document.getElementById('val-vx');
+      const elVy = document.getElementById('val-vy');
+      const elWz = document.getElementById('val-wz');
+      if (elX && pose.x !== undefined) elX.textContent = pose.x.toFixed(2) + ' m';
+      if (elY && pose.y !== undefined) elY.textContent = pose.y.toFixed(2) + ' m';
+      if (elYaw && pose.yaw !== undefined) {
+        const deg = ((pose.yaw * 180 / Math.PI) % 360 + 360) % 360;
+        elYaw.textContent = deg.toFixed(1) + '°';
+      }
+      if (elVx) elVx.textContent = (pose.vx || 0.0).toFixed(2) + ' m/s';
+      if (elVy) elVy.textContent = (pose.vy || 0.0).toFixed(2) + ' m/s';
+      if (elWz) elWz.textContent = (pose.wz || 0.0).toFixed(2) + ' r/s';
+    }
+
+    function updateUI() {
+
+      const badge = document.getElementById('nav-badge');
+      if (telemetry.io_states && telemetry.io_states.is_emergency_stop) {
+        badge.className = 'badge estop';
+        badge.textContent = '🛑 急停触发生效';
+      } else if (telemetry.nav_status === 'NAVIGATING') {
+        badge.className = 'badge navigating';
+        badge.textContent = `🚀 导航中 (${telemetry.nav_dist_rem}m)`;
+      } else if (telemetry.nav_status === 'ARRIVED') {
+        badge.className = 'badge online';
+        badge.textContent = '✅ 已到达目标工位';
+      } else if (telemetry.nav_status === 'PLANNING') {
+        badge.className = 'badge navigating';
+        badge.textContent = '⏳ 正在计算拓扑路径...';
+      } else {
+        badge.className = 'badge';
+        badge.textContent = '● 空闲 (IDLE)';
+      }
+
+      if (telemetry.target_goal) {
+        document.getElementById('target-coord').textContent = `目标: (${telemetry.target_goal.x.toFixed(1)}, ${telemetry.target_goal.y.toFixed(1)})`;
+      } else {
+        document.getElementById('target-coord').textContent = '无目标';
+      }
+
+      const chassisMap = {
+        diff_drive: "两轮差速 (Diff-Drive)",
+        single_steer: "单舵轮叉车 (Single-Steer)",
+        dual_steer: "双舵轮全向 (Dual-Steer)"
+      };
+      const plannerMap = {
+        astar: "A* 启发式网格规划",
+        dijkstra: "Dijkstra 拓扑路网 (安全无穿墙)",
+        direct: "直达导引"
+      };
+      document.getElementById('overlay-chassis').textContent = chassisMap[telemetry.chassis_type] || telemetry.chassis_type;
+      document.getElementById('overlay-planner').textContent = plannerMap[telemetry.planner_type] || telemetry.planner_type;
+
+      // Update IO indicators
+      if (telemetry.io_states) {
+        const io = telemetry.io_states;
+        const di = io.inputs || {};
+        const dout = io.outputs || {};
+
+        document.getElementById('btn-estop').className = di.di_estop ? 'io-btn active' : 'io-btn';
+        document.getElementById('val-estop').textContent = di.di_estop ? '触发' : '正常';
+
+        document.getElementById('btn-bumper').className = di.di_bumper_front ? 'io-btn active' : 'io-btn';
+        document.getElementById('val-bumper').textContent = di.di_bumper_front ? '碰触' : '未触发';
+
+        document.getElementById('btn-cargo').className = di.di_cargo_present ? 'io-btn active' : 'io-btn';
+        document.getElementById('val-cargo').textContent = di.di_cargo_present ? '有货' : '无货';
+
+        document.getElementById('light-red').className = dout.do_tower_red ? 'light-bulb red on' : 'light-bulb red';
+        document.getElementById('light-yellow').className = dout.do_tower_yellow ? 'light-bulb yellow on' : 'light-bulb yellow';
+        document.getElementById('light-green').className = dout.do_tower_green ? 'light-bulb green on' : 'light-bulb green';
+
+        document.getElementById('brake-status').textContent = dout.do_brake_release ? '抱闸: 释放(正常运行)' : '抱闸: 锁死(安全制动)';
+      }
+
+      // Update Vision markers
+      if (telemetry.vision_markers && telemetry.vision_markers.length > 0) {
+        const vlist = telemetry.vision_markers.map(m => `<div>🏷️ <strong>${m.name}</strong> (ID:${m.id}) 距离:${m.distance_m}m 偏航:${m.bearing_deg}°</div>`).join('');
+        document.getElementById('vision-list').innerHTML = vlist;
+      } else {
+        document.getElementById('vision-list').textContent = '未检测到视野内二维码';
+      }
+
+      // Update Obstacle Count
+      const obsNum = (telemetry.dynamic_obstacles && telemetry.dynamic_obstacles.length) || 0;
+      const obsCountEl = document.getElementById('obs-count');
+      if (obsCountEl) obsCountEl.textContent = `路障: ${obsNum} 个`;
+
+      // Update heading orthogonal alignment state
+      const deg = ((renderPose.yaw * 180 / Math.PI) % 360 + 360) % 360;
+      const cardinalDist = Math.min(deg % 90, 90 - (deg % 90));
+      const headingStateEl = document.getElementById('val-heading-state');
+      if (headingStateEl) {
+        if (cardinalDist < 3.5) {
+          headingStateEl.innerHTML = `<span style="color:var(--green);">✅ 正交平行/垂直对齐 (${deg.toFixed(1)}°)</span>`;
+        } else {
+          headingStateEl.innerHTML = `<span style="color:var(--yellow);">🔄 姿态调整中 (${deg.toFixed(1)}°)</span>`;
+        }
+      }
+
+      // Update header performance badge
+      if (telemetry.perf_summary) {
+        const perf = telemetry.perf_summary;
+        const badge = document.getElementById('header-perf-badge');
+        const cpuPct = perf.cpu_tot !== undefined ? perf.cpu_tot : (perf.cpu_pct !== undefined ? perf.cpu_pct : 0);
+        if (badge) {
+          badge.textContent = `CPU ${cpuPct.toFixed(0)}%`;
+          if (cpuPct > 80) {
+            badge.style.color = '#f85149';
+            badge.style.borderColor = 'rgba(248, 81, 73, 0.5)';
+            badge.style.background = 'rgba(248, 81, 73, 0.2)';
+          } else {
+            badge.style.color = '#fbbf24';
+            badge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+            badge.style.background = 'rgba(245, 158, 11, 0.2)';
+          }
+        }
+      }
+
+      // Dynamically populate stations for active scenario
+      const curSc = telemetry.active_scenario || (telemetry.scenario_metadata && telemetry.scenario_metadata.id);
+      if (curSc && curSc !== lastRenderedScenario) {
+        lastRenderedScenario = curSc;
+        updateScenarioPills(curSc);
+
+        const grid = document.getElementById('missionGrid');
+        if (grid && telemetry.scenario_metadata && telemetry.scenario_metadata.stations) {
+          let html = '';
+          telemetry.scenario_metadata.stations.forEach(st => {
+            html += `
+              <button class="mission-btn" onclick="dispatchMission(${st.x}, ${st.y}, '${st.name}', ${st.dock_yaw || 0.0})">
+                <span>${st.name}</span>
+                <span style="font-size:10px; color:var(--text-dim);">(${st.x.toFixed(1)}, ${st.y.toFixed(1)})</span>
+              </button>
+            `;
+          });
+          html += `
+            <button class="mission-btn cancel" onclick="cancelMission()">
+              <span>⏹️ 中止 / 取消导航任务</span>
+            </button>
+          `;
+          grid.innerHTML = html;
+        }
+      }
+
+      if (trail.length === 0 || Math.hypot(trail[trail.length-1].x - telemetry.x, trail[trail.length-1].y - telemetry.y) > 0.08) {
+        trail.push({x: telemetry.x, y: telemetry.y});
+        if (trail.length > MAX_TRAIL) trail.shift();
+      }
+    }
+
+    let lastRenderedScenario = "";
+
+    function updateScenarioPills(scId) {
+      const pills = document.querySelectorAll('.scenario-pill');
+      pills.forEach(p => {
+        if (p.getAttribute('data-sc') === scId) {
+          p.classList.add('active');
+        } else {
+          p.classList.remove('active');
+        }
+      });
+      const scSel = document.getElementById('scenarioSelect');
+      if (scSel && scSel.value !== scId) {
+        scSel.value = scId;
+      }
+    }
+
+    // Switch Scenario API
+    function switchScenario(scenarioId) {
+      if (typeof exitReplayMode === 'function') exitReplayMode();
+      updateScenarioPills(scenarioId);
+      trail = [];
+      renderPose.initialized = false;
+      needFullTelemetry = true;
+      fetch('/api/map_scenario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenario: scenarioId })
+      }).then(r => r.json()).then(() => {
+        needFullTelemetry = true;
+      }).catch(err => console.error("Error switching scenario:", err));
+      resetView();
+    }
+
+    // Click Mode & Obstacle Management
+    let clickMode = 'NAV'; // 'NAV' or 'OBSTACLE'
+
+    function toggleClickMode() {
+      clickMode = (clickMode === 'NAV') ? 'OBSTACLE' : 'NAV';
+      const label = document.getElementById('click-mode-label');
+      const btn = document.getElementById('btn-click-mode');
+      if (clickMode === 'OBSTACLE') {
+        label.innerHTML = '🚧 地图点击: [ <strong>放置路障模式</strong> ] (点击切回导航)';
+        btn.style.borderColor = 'var(--yellow)';
+        btn.style.color = 'var(--yellow)';
+      } else {
+        label.innerHTML = '🎯 地图点击: [ <strong>目标导航模式</strong> ] (点击切换为放置路障)';
+        btn.style.borderColor = '';
+        btn.style.color = '';
+      }
+    }
+
+    function randomObstacles() {
+      fetch('/api/obstacles/random', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: 3 })
+      });
+    }
+
+    function clearObstacles() {
+      fetch('/api/obstacles/clear', { method: 'POST' });
+    }
+
+    // Switch Chassis & Planner API
+    function switchChassis(type) {
+      fetch('/api/chassis_type', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: type })
+      });
+    }
+
+    function switchPlanner(type) {
+      fetch('/api/planner_type', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: type })
+      });
+    }
+
+    function toggleIO(key) {
+      const cur = (telemetry.io_states && telemetry.io_states.inputs && telemetry.io_states.inputs[key]) || false;
+      const val = !cur;
+
+      fetch('/api/set_io', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: key, value: val })
+      });
+    }
+
+    function toggleLift() {
+      isLiftUp = !isLiftUp;
+      document.getElementById('val-lift').textContent = isLiftUp ? '顶升已升起' : '降下到位';
+      document.getElementById('btn-lift').className = isLiftUp ? 'io-btn active' : 'io-btn';
+    }
+
+    // Default Fallback Stations
+    const defaultStations = [
+      { name: "工位 A (上料)", x: 4.5, y: 0.0, dock_yaw: 0.0, color: "#58a6ff" },
+      { name: "工位 B (出库)", x: -4.5, y: 0.0, dock_yaw: 3.14159, color: "#bc8cff" },
+      { name: "自动充电桩", x: 0.0, y: -5.5, dock_yaw: -1.5708, color: "#3fb950" },
+      { name: "工位 C (质检)", x: 0.0, y: 4.0, dock_yaw: 1.5708, color: "#e3b341" },
+      { name: "待命中心", x: 0.0, y: 0.0, dock_yaw: 0.0, color: "#f0883e" }
+    ];
+
+    canvas.addEventListener('click', (e) => {
+      if (dragDistance > 8) return; // Ignore drag gestures
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+
+      const cx = canvas.width / 2 + panOffset.x;
+      const cy = canvas.height / 2 + panOffset.y;
+
+      const worldX = (clickX - cx) / SCALE;
+      const worldY = -(clickY - cy) / SCALE;
+
+      if (clickMode === 'OBSTACLE') {
+        fetch('/api/obstacles/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ x: parseFloat(worldX.toFixed(2)), y: parseFloat(worldY.toFixed(2)), w: 0.8, h: 0.8 })
+        });
+      } else {
+        dispatchMission(worldX, worldY, '点选目标', 0.0);
+      }
+    });
+
+    function dispatchMission(x, y, label, dock_yaw = 0.0) {
+      if (typeof exitReplayMode === 'function') exitReplayMode();
+      fetch('/api/navigate_to_pose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          x: parseFloat(x.toFixed(2)),
+          y: parseFloat(y.toFixed(2)),
+          yaw: parseFloat(dock_yaw.toFixed(2))
+        })
+      });
+    }
+
+    function cancelMission() {
+      fetch('/api/cancel_navigation', { method: 'POST' });
+    }
+
+    // Render loop
+    let lastFrameTime = performance.now();
+    let pathPulse = 0;
+    function draw() {
+      pathPulse += 0.05;
+      const now = performance.now();
+      const dt = Math.min(0.08, Math.max(0.001, (now - lastFrameTime) / 1000));
+      lastFrameTime = now;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Smooth 60/120 FPS Pose Kinematic Extrapolation & Frame-Rate-Independent Error-Decay
+      if (!renderPose.initialized && telemetry && telemetry.x !== undefined) {
+        onNewTelemetryReceived(telemetry);
+      } else if (renderPose.initialized) {
+        const cosYaw = Math.cos(renderPose.yaw);
+        const sinYaw = Math.sin(renderPose.yaw);
+
+        // 1. Advance pose along heading at 60 FPS using verified chassis velocities
+        renderPose.x += (renderPose.vx * cosYaw - renderPose.vy * sinYaw) * dt;
+        renderPose.y += (renderPose.vx * sinYaw + renderPose.vy * cosYaw) * dt;
+        renderPose.yaw += renderPose.wz * dt;
+
+        // 2. Exponential Error-Decay: smoothly absorb error offset without rubber-banding backwards
+        const isMoving = Math.abs(renderPose.vx) > 0.03 || Math.abs(renderPose.vy) > 0.03 || Math.abs(renderPose.wz) > 0.05;
+        const lambda = isMoving ? 8.5 : 14.0;
+        const decayFactor = Math.exp(-lambda * dt);
+        const stepBlend = 1.0 - decayFactor;
+
+        renderPose.x += renderPose.errX * stepBlend;
+        renderPose.errX *= decayFactor;
+
+        renderPose.y += renderPose.errY * stepBlend;
+        renderPose.errY *= decayFactor;
+
+        renderPose.yaw += renderPose.errYaw * stepBlend;
+        renderPose.errYaw *= decayFactor;
+
+        // Smooth angle normalization to [-pi, +pi] to prevent multi-turn drift
+        renderPose.yaw = Math.atan2(Math.sin(renderPose.yaw), Math.cos(renderPose.yaw));
+      }
+
+      // FIXED MAP: Camera origin is strictly locked to canvas center + user pan offset.
+      const cx = canvas.width / 2 + panOffset.x;
+      const cy = canvas.height / 2 + panOffset.y;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+
+      // 1. Factory Floor Grid
+      ctx.strokeStyle = '#151d28';
+      ctx.lineWidth = 1;
+      for (let i = -12; i <= 12; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * SCALE, -12 * SCALE);
+        ctx.lineTo(i * SCALE, 12 * SCALE);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(-12 * SCALE, -i * SCALE);
+        ctx.lineTo(12 * SCALE, -i * SCALE);
+        ctx.stroke();
+      }
+
+      // 1.1 Warehouse Perimeter Walls (Dynamic from active scenario)
+      const b = (telemetry.scenario_metadata && telemetry.scenario_metadata.bounds) || { min_x: -7.5, max_x: 7.5, min_y: -7.5, max_y: 7.5 };
+      const bw = (b.max_x - b.min_x) * SCALE;
+      const bh = (b.max_y - b.min_y) * SCALE;
+      const bx = b.min_x * SCALE;
+      const by = -b.max_y * SCALE;
+
+      ctx.strokeStyle = '#30363d';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(bx, by, bw, bh);
+
+      // Yellow/Black Safety Border along perimeter
+      ctx.strokeStyle = 'rgba(240, 136, 62, 0.35)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([10, 8]);
+      ctx.strokeRect(bx + 4, by + 4, bw - 8, bh - 8);
+      ctx.setLineDash([]);
+
+      // 2. Warehouse Shelves / Workcells (Rendered dynamically from active scenario)
+      const currentShelves = (telemetry.scenario_metadata && telemetry.scenario_metadata.shelves) || [
+        { name: "货架区 A (原材料)", x1: 1.8, y1: 1.8, x2: 5.0, y2: 3.8, color: "#1f2937", border: "#3b82f6" },
+        { name: "货架区 B (半成品)", x1: -5.0, y1: 1.8, x2: -1.8, y2: 3.8, color: "#1f2937", border: "#8b5cf6" },
+        { name: "货架区 C (成品库)", x1: 1.8, y1: -3.8, x2: 5.0, y2: -1.8, color: "#1f2937", border: "#10b981" },
+        { name: "货架区 D (辅料库)", x1: -5.0, y1: -3.8, x2: -1.8, y2: -1.8, color: "#1f2937", border: "#f59e0b" }
+      ];
+
+      currentShelves.forEach(sh => {
+        const sx = sh.x1 * SCALE;
+        const sy = -sh.y2 * SCALE;
+        const sw = (sh.x2 - sh.x1) * SCALE;
+        const sh_px = (sh.y2 - sh.y1) * SCALE;
+
+        // Shelf base with 3D gradient look
+        ctx.fillStyle = 'rgba(22, 27, 34, 0.92)';
+        ctx.strokeStyle = sh.border || '#3b82f6';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(sx, sy, sw, sh_px, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        // Inner rack grids
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = 1;
+        const cols = Math.max(2, Math.round(sw / 25));
+        for (let c = 1; c < cols; c++) {
+          ctx.beginPath();
+          ctx.moveTo(sx + (sw / cols) * c, sy);
+          ctx.lineTo(sx + (sw / cols) * c, sy + sh_px);
+          ctx.stroke();
+        }
+
+        // Shelf Title Badge
+        ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+        ctx.fillStyle = 'rgba(201, 209, 217, 0.9)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(sh.name, sx + sw / 2, sy + sh_px / 2);
+      });
+
+      // 2.1 Draw Topological Route Network (Warehouse Guided Rails)
+      if (telemetry.topo_graph && telemetry.topo_graph.edges) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 6]);
+        telemetry.topo_graph.edges.forEach(e => {
+          ctx.beginPath();
+          ctx.moveTo(e.p1.x * SCALE, -e.p1.y * SCALE);
+          ctx.lineTo(e.p2.x * SCALE, -e.p2.y * SCALE);
+          ctx.stroke();
+        });
+        ctx.setLineDash([]);
+
+        // Topological intersection nodes
+        if (telemetry.topo_graph.nodes) {
+          Object.values(telemetry.topo_graph.nodes).forEach(n => {
+            ctx.fillStyle = '#0284c7';
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(n.x * SCALE, -n.y * SCALE, 4, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.stroke();
+          });
+        }
+        ctx.restore();
+      }
+
+      // 2.2 Draw Dynamic Obstacles (Industrial Hazard Warning Blocks)
+      if (telemetry.dynamic_obstacles && telemetry.dynamic_obstacles.length > 0) {
+        telemetry.dynamic_obstacles.forEach(obs => {
+          const ox = obs.x * SCALE;
+          const oy = -obs.y * SCALE;
+          const ow = obs.w * SCALE;
+          const oh = obs.h * SCALE;
+
+          ctx.save();
+          ctx.translate(ox, oy);
+
+          // Hazard Block Base & Glow
+          ctx.shadowColor = 'rgba(248, 81, 73, 0.6)';
+          ctx.shadowBlur = 10;
+          ctx.fillStyle = '#1c1917';
+          ctx.strokeStyle = '#f59e0b';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.roundRect(-ow/2, -oh/2, ow, oh, 5);
+          ctx.fill();
+          ctx.stroke();
+
+          // Diagonal Hazard Stripes inside
+          ctx.save();
+          ctx.beginPath();
+          ctx.roundRect(-ow/2, -oh/2, ow, oh, 5);
+          ctx.clip();
+          ctx.strokeStyle = 'rgba(245, 158, 11, 0.75)';
+          ctx.lineWidth = 5;
+          for (let x = -ow; x < ow * 2; x += 12) {
+            ctx.beginPath();
+            ctx.moveTo(x, -oh);
+            ctx.lineTo(x + oh * 1.5, oh);
+            ctx.stroke();
+          }
+          ctx.restore();
+
+          // Center Warning Icon & Label
+          ctx.font = '13px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('⚠️', 0, -3);
+
+          ctx.font = 'bold 10px monospace';
+          ctx.fillStyle = '#fbbf24';
+          ctx.fillText(`OBSTACLE #${obs.id}`, 0, oh/2 + 11);
+
+          ctx.restore();
+        });
+      }
+
+      // 3. Draw Stations (Large, Crisp, High-Contrast Pill Badges with Docking Heading Marker)
+      const currentStations = (telemetry.scenario_metadata && telemetry.scenario_metadata.stations) || defaultStations;
+      currentStations.forEach(st => {
+        const sx = st.x * SCALE;
+        const sy = -st.y * SCALE;
+
+        // Glowing outer pulse
+        ctx.save();
+        ctx.strokeStyle = st.color || '#58a6ff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 8 + Math.sin(pathPulse * 3) * 2, 0, 2 * Math.PI);
+        ctx.stroke();
+
+        // Inner solid station landmark
+        ctx.fillStyle = st.color || '#58a6ff';
+        ctx.beginPath();
+        ctx.arc(sx, sy, 6, 0, 2 * Math.PI);
+        ctx.fill();
+
+        // Docking orientation notch
+        if (st.dock_yaw !== undefined) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(sx + Math.cos(-st.dock_yaw) * 11, sy + Math.sin(-st.dock_yaw) * 11);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // Pill badge background for crisp readability
+        const label = `${st.name}`;
+        ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
+        const txtWidth = ctx.measureText(label).width;
+
+        const badgeW = Math.max(txtWidth + 16, 95);
+        const badgeH = 22;
+        const bx = sx + 14;
+        const by = sy - badgeH / 2;
+
+        ctx.fillStyle = 'rgba(13, 17, 23, 0.92)';
+        ctx.strokeStyle = st.color || '#58a6ff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(bx, by, badgeW, badgeH, 11);
+        ctx.fill();
+        ctx.stroke();
+
+        // Station text
+        ctx.fillStyle = '#f0f6fc';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, bx + 8, sy);
+      });
+
+      const currReplayFrame = (isReplayActive && replaySessionData && replaySessionData.frames && replaySessionData.frames[replayCurrentFrameIdx]) ? replaySessionData.frames[replayCurrentFrameIdx] : null;
+
+      // 3.5 Draw Full Historical Flight Trajectory Ribbon when Replay is Active
+      if (isReplayActive && replaySessionData && replaySessionData.frames && replaySessionData.frames.length > 0) {
+        const frames = replaySessionData.frames;
+        ctx.save();
+        // A. Full planned mission trace (translucent dashed purple ribbon)
+        ctx.strokeStyle = 'rgba(168, 85, 247, 0.35)';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 6]);
+        ctx.beginPath();
+        for (let i = 0; i < frames.length; i++) {
+          const p = frames[i].pose;
+          if (i === 0) ctx.moveTo(p.x * SCALE, -p.y * SCALE);
+          else ctx.lineTo(p.x * SCALE, -p.y * SCALE);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // B. Travelled path up to scrubbed frame (vivid solid glowing neon line)
+        ctx.strokeStyle = '#c084fc';
+        ctx.shadowColor = '#a855f7';
+        ctx.shadowBlur = 10;
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        for (let i = 0; i <= replayCurrentFrameIdx && i < frames.length; i++) {
+          const p = frames[i].pose;
+          if (i === 0) ctx.moveTo(p.x * SCALE, -p.y * SCALE);
+          else ctx.lineTo(p.x * SCALE, -p.y * SCALE);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 4. Draw Planned Path (Glowing Neon Line)
+      const activePlanPath = (isReplayActive && replaySessionData && replaySessionData.metadata && replaySessionData.metadata.plan_path) ? replaySessionData.metadata.plan_path : telemetry.plan_path;
+      if (activePlanPath && activePlanPath.length > 1) {
+        ctx.save();
+        ctx.strokeStyle = isReplayActive ? '#fbbf24' : '#00ffcc';
+        ctx.shadowColor = isReplayActive ? '#f59e0b' : '#00ffcc';
+        ctx.shadowBlur = 12 + Math.sin(pathPulse) * 4;
+        ctx.lineWidth = 3.5;
+        ctx.setLineDash([10, 5]);
+        ctx.lineDashOffset = -pathPulse * 12;
+        ctx.beginPath();
+        for (let i = 0; i < activePlanPath.length; i++) {
+          const pt = activePlanPath[i];
+          if (i === 0) ctx.moveTo(pt.x * SCALE, -pt.y * SCALE);
+          else ctx.lineTo(pt.x * SCALE, -pt.y * SCALE);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 5. Draw Target Goal Pin
+      const activeGoal = (isReplayActive && replaySessionData && replaySessionData.metadata && replaySessionData.metadata.target_goal) ? replaySessionData.metadata.target_goal : telemetry.target_goal;
+      if (activeGoal) {
+        const gx = activeGoal.x * SCALE;
+        const gy = -activeGoal.y * SCALE;
+        ctx.save();
+        ctx.fillStyle = '#ff4d4f';
+        ctx.beginPath();
+        ctx.arc(gx, gy, 7, 0, 2 * Math.PI);
+        ctx.fill();
+
+        ctx.strokeStyle = '#ff7875';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(gx, gy, 14 + Math.sin(pathPulse * 3) * 5, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 6. Draw Motion Trail (Sampled from 60 FPS Render Pose, active in live teleop)
+      if (!isReplayActive && trail.length > 1) {
+        ctx.strokeStyle = 'rgba(240, 136, 62, 0.45)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        for (let i = 0; i < trail.length; i++) {
+          if (i === 0) ctx.moveTo(trail[i].x * SCALE, -trail[i].y * SCALE);
+          else ctx.lineTo(trail[i].x * SCALE, -trail[i].y * SCALE);
+        }
+        ctx.stroke();
+      }
+
+      // Effective active pose for vehicle rendering and lidar projection
+      const effPose = (isReplayActive && currReplayFrame) ? currReplayFrame.pose : renderPose;
+      const effRanges = (isReplayActive && currReplayFrame && currReplayFrame.perception) ? currReplayFrame.perception.scan_ranges : telemetry.scan_ranges;
+
+      // Real-time 60 FPS numerical display synchrony
+      updatePoseCounters(effPose);
+
+      // 7. Draw LiDAR Hits (Projected accurately from Render/Replay Pose)
+      if (effRanges && effRanges.length > 0) {
+        const ranges = effRanges;
+        const amin = (isReplayActive && currReplayFrame) ? -Math.PI : (telemetry.scan_angle_min || -2.35);
+        const ainc = (isReplayActive && currReplayFrame) ? (2 * Math.PI / ranges.length) : (telemetry.scan_angle_inc || 0.013);
+        for (let i = 0; i < ranges.length; i++) {
+          const r = ranges[i];
+          if (r < 0.1 || r > 24) continue;
+          const ang = effPose.yaw + amin + i * ainc;
+          const hx = (effPose.x + r * Math.cos(ang)) * SCALE;
+          const hy = -(effPose.y + r * Math.sin(ang)) * SCALE;
+          ctx.fillStyle = isReplayActive ? '#e879f9' : '#00ffcc';
+          ctx.fillRect(hx - 1.5, hy - 1.5, 3, 3);
+        }
+      }
+
+      // 8. Draw AGV Body & Kinematics Mechanisms
+      const L = 1.788 * SCALE;
+      const W = 0.994 * SCALE;
+      const r_wheel = 0.115 * SCALE;
+      const track = 0.795 * SCALE;
+
+      ctx.save();
+      ctx.translate(effPose.x * SCALE, -effPose.y * SCALE);
+      ctx.rotate(-effPose.yaw);
+
+      // Heading indicator laser beam
+      ctx.strokeStyle = isReplayActive ? 'rgba(232, 121, 249, 0.7)' : 'rgba(255, 211, 61, 0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(L/2, 0);
+      ctx.lineTo(L/2 + 2.8 * SCALE, 0);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Chassis body
+      ctx.fillStyle = isReplayActive ? '#7c3aed' : (telemetry.io_states && telemetry.io_states.is_emergency_stop ? '#5a1e1e' : '#f0883e');
+      ctx.shadowColor = isReplayActive ? 'rgba(192, 132, 252, 0.6)' : 'rgba(240, 136, 62, 0.35)';
+      ctx.shadowBlur = 10;
+      ctx.strokeStyle = isReplayActive ? '#e9d5ff' : '#ffffff';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.roundRect(-L/2, -W/2, L, W, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Heading indicator arrow
+      ctx.fillStyle = isReplayActive ? '#f472b6' : '#ffd33d';
+      ctx.beginPath();
+      ctx.moveTo(L/2 - 10, -W/4);
+      ctx.lineTo(L/2 + 12, 0);
+      ctx.lineTo(L/2 - 10, W/4);
+      ctx.closePath();
+      ctx.fill();
+
+      // Replay label badge on vehicle
+      if (isReplayActive) {
+        ctx.font = 'bold 9px monospace';
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.fillText('REPLAY', 0, 3);
+      }
+
+      // Wheel representations based on chassis type
+      ctx.fillStyle = '#21262d';
+      const effChassisType = (isReplayActive && currReplayFrame && currReplayFrame.status) ? (currReplayFrame.status.chassis_type || telemetry.chassis_type) : telemetry.chassis_type;
+      if (effChassisType === 'single_steer') {
+        // Front Steer Wheel
+        ctx.save();
+        ctx.translate(L/3, 0);
+        ctx.fillStyle = isReplayActive ? '#f472b6' : '#00ffcc';
+        ctx.fillRect(-r_wheel, -6, r_wheel*2, 12);
+        ctx.restore();
+        // Rear fixed wheels
+        ctx.fillStyle = '#21262d';
+        ctx.fillRect(-L/3 - r_wheel, -track/2 - 4, r_wheel*2, 8);
+        ctx.fillRect(-L/3 - r_wheel, track/2 - 4, r_wheel*2, 8);
+      } else if (effChassisType === 'dual_steer') {
+        // Front & Rear Steer Wheels
+        ctx.fillStyle = isReplayActive ? '#f472b6' : '#00ffcc';
+        ctx.fillRect(L/3 - r_wheel, -6, r_wheel*2, 12);
+        ctx.fillRect(-L/3 - r_wheel, -6, r_wheel*2, 12);
+      } else {
+        // Differential wheels
+        ctx.fillRect(-r_wheel, -track/2 - 4, r_wheel*2, 8);
+        ctx.fillRect(-r_wheel, track/2 - 4, r_wheel*2, 8);
+      }
+
+      // Camera FOV cone
+      ctx.strokeStyle = isReplayActive ? 'rgba(232, 121, 249, 0.4)' : 'rgba(88, 166, 255, 0.25)';
+      ctx.fillStyle = isReplayActive ? 'rgba(232, 121, 249, 0.12)' : 'rgba(88, 166, 255, 0.08)';
+      ctx.beginPath();
+      ctx.moveTo(L/2, 0);
+      ctx.lineTo(L/2 + 3.2 * SCALE, -1.9 * SCALE);
+      ctx.lineTo(L/2 + 3.2 * SCALE, 1.9 * SCALE);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.restore(); // restore from vehicle pose
+      ctx.restore(); // restore from map translate
+
+      requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+
+    // Joystick & Keyboard Teleop
+    let cmd = { vx: 0.0, vy: 0.0, wz: 0.0 };
+    function sendCmd() {
+      fetch('/api/cmd_vel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cmd)
+      }).catch(() => {});
+    }
+
+    const joyBase = document.getElementById('joyBase');
+    const joyHandle = document.getElementById('joyHandle');
+    let isDragging = false;
+
+    joyBase.addEventListener('pointerdown', (e) => {
+      isDragging = true;
+      joyBase.setPointerCapture(e.pointerId);
+    });
+    joyBase.addEventListener('pointermove', (e) => {
+      if (!isDragging) return;
+      const rect = joyBase.getBoundingClientRect();
+      const dx = e.clientX - (rect.left + rect.width / 2);
+      const dy = e.clientY - (rect.top + rect.height / 2);
+      const radius = rect.width / 2 - 18;
+      const dist = Math.hypot(dx, dy);
+      const clampedDist = Math.min(dist, radius);
+      const nx = dist > 0 ? (dx / dist) * clampedDist : 0;
+      const ny = dist > 0 ? (dy / dist) * clampedDist : 0;
+
+      joyHandle.style.transform = `translate(${nx}px, ${ny}px)`;
+      cmd.vx = -(ny / radius) * 1.2;
+      cmd.wz = -(nx / radius) * 1.5;
+      sendCmd();
+    });
+    window.addEventListener('pointerup', () => {
+      if (isDragging) {
+        isDragging = false;
+        joyHandle.style.transform = 'translate(0px, 0px)';
+        cmd = { vx: 0, vy: 0, wz: 0 };
+        sendCmd();
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (['w','s','a','d','q','e',' '].includes(e.key.toLowerCase())) {
+        if (e.key === 'w') cmd.vx = 0.8;
+        if (e.key === 's') cmd.vx = -0.8;
+        if (e.key === 'a') cmd.wz = 1.0;
+        if (e.key === 'd') cmd.wz = -1.0;
+        if (e.key === 'q') cmd.vy = 0.6; // Lateral left (dual-steer)
+        if (e.key === 'e') cmd.vy = -0.6; // Lateral right (dual-steer)
+        if (e.key === ' ') { cmd.vx = 0; cmd.vy = 0; cmd.wz = 0; cancelMission(); }
+        sendCmd();
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      if (['w','s','a','d','q','e'].includes(e.key.toLowerCase())) {
+        cmd.vx = 0; cmd.vy = 0; cmd.wz = 0;
+        sendCmd();
+      }
+    });
+
+    // ============================================================
+    // REAL-TIME DEBUG CONSOLE & EVENT SUBSCRIPTION CLIENT
+    // ============================================================
+    let debugModalVisible = false;
+    let isDebugFullscreen = false;
+    let isStreamPaused = false;
+    let autoScroll = true;
+    let currentDebugTab = 'stream';
+    let latestEventId = 0;
+    let allReceivedEvents = [];
+    let activeSubCategories = new Set(['chassis', 'navigation', 'safety', 'sensors', 'system']);
+    let eventRateCounter = 0;
+    let lastRateCalcTime = performance.now();
+    let currentEventRate = 0;
+
+    function toggleDebugModal() {
+      debugModalVisible = !debugModalVisible;
+      const modal = document.getElementById('debugModal');
+      if (modal) modal.style.display = debugModalVisible ? 'flex' : 'none';
+      if (debugModalVisible) {
+        if (currentDebugTab === 'topics') updateTopicInspector();
+        renderEventList();
+      }
+    }
+
+    function toggleDebugDock() {
+      const dialog = document.getElementById('debugDialog');
+      const btn = document.getElementById('btn-dock-toggle');
+      if (dialog.classList.contains('fullscreen')) {
+        dialog.classList.remove('fullscreen');
+        const fsBtn = document.getElementById('btn-fullscreen-toggle');
+        if (fsBtn) fsBtn.textContent = '⛶ 全屏';
+        isDebugFullscreen = false;
+      }
+      if (dialog.classList.contains('floating')) {
+        dialog.classList.remove('floating');
+        dialog.style.left = '';
+        dialog.style.top = '';
+        dialog.style.right = '';
+        dialog.style.bottom = '';
+        if (btn) btn.textContent = '🗗 自由悬浮';
+      } else {
+        dialog.classList.add('floating');
+        const rect = dialog.getBoundingClientRect();
+        dialog.style.left = Math.max(20, rect.left) + 'px';
+        dialog.style.top = Math.max(70, rect.top - 50) + 'px';
+        if (btn) btn.textContent = '🗔 靠底停靠';
+      }
+    }
+
+    function toggleDebugMinimize() {
+      const dialog = document.getElementById('debugDialog');
+      const btn = document.getElementById('btn-min-toggle');
+      dialog.classList.toggle('minimized');
+      const isMin = dialog.classList.contains('minimized');
+      if (btn) btn.textContent = isMin ? '🗖 展开' : '🗕 最小化';
+    }
+
+    let isDraggingDialog = false;
+    let dragStartX = 0, dragStartY = 0;
+    let dialogStartLeft = 0, dialogStartTop = 0;
+
+    function initDialogDrag() {
+      const header = document.getElementById('debugDialogHeader');
+      const dialog = document.getElementById('debugDialog');
+      if (!header || !dialog) return;
+
+      header.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button') || e.target.closest('input') || e.target.closest('label')) return;
+        if (dialog.classList.contains('fullscreen')) return;
+
+        if (!dialog.classList.contains('floating')) {
+          const rect = dialog.getBoundingClientRect();
+          dialog.classList.add('floating');
+          dialog.style.left = rect.left + 'px';
+          dialog.style.top = rect.top + 'px';
+          dialog.style.right = 'auto';
+          dialog.style.bottom = 'auto';
+          const btn = document.getElementById('btn-dock-toggle');
+          if (btn) btn.textContent = '🗔 靠底停靠';
+        }
+
+        isDraggingDialog = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        const rect = dialog.getBoundingClientRect();
+        dialogStartLeft = rect.left;
+        dialogStartTop = rect.top;
+        e.preventDefault();
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDraggingDialog) return;
+        const dx = e.clientX - dragStartX;
+        const dy = e.clientY - dragStartY;
+        dialog.style.left = Math.max(10, Math.min(window.innerWidth - 120, dialogStartLeft + dx)) + 'px';
+        dialog.style.top = Math.max(10, Math.min(window.innerHeight - 50, dialogStartTop + dy)) + 'px';
+      });
+
+      window.addEventListener('mouseup', () => {
+        isDraggingDialog = false;
+      });
+    }
+
+    function toggleDebugFullscreen() {
+      isDebugFullscreen = !isDebugFullscreen;
+      const dialog = document.getElementById('debugDialog');
+      const btn = document.getElementById('btn-fullscreen-toggle');
+      if (isDebugFullscreen) {
+        dialog.classList.add('fullscreen');
+        btn.textContent = '⛶ 还原窗口';
+      } else {
+        dialog.classList.remove('fullscreen');
+        btn.textContent = '⛶ 全屏';
+      }
+    }
+
+    function switchDebugTab(tab) {
+      currentDebugTab = tab;
+      ['stream', 'topics', 'inject'].forEach(t => {
+        const btn = document.getElementById(`tab-btn-${t}`);
+        const content = document.getElementById(`tab-content-${t}`);
+        if (btn) btn.classList.toggle('active', t === tab);
+        if (content) content.style.display = (t === tab) ? 'block' : 'none';
+      });
+      if (tab === 'topics') updateTopicInspector();
+      if (tab === 'stream') renderEventList();
+    }
+
+    function toggleSubCategory(cat, isChecked) {
+      if (isChecked) {
+        activeSubCategories.add(cat);
+      } else {
+        activeSubCategories.delete(cat);
+      }
+      const chip = document.getElementById(`chip-${cat}`);
+      if (chip) chip.classList.toggle('active', isChecked);
+      document.getElementById('stat-channels').textContent = `${activeSubCategories.size} / 5`;
+      renderEventList();
+    }
+
+    function toggleAllCategories(enable) {
+      ['chassis', 'navigation', 'safety', 'sensors', 'system'].forEach(cat => {
+        const chip = document.getElementById(`chip-${cat}`);
+        const input = chip ? chip.querySelector('input') : null;
+        if (input) input.checked = enable;
+        if (chip) chip.classList.toggle('active', enable);
+        if (enable) activeSubCategories.add(cat); else activeSubCategories.delete(cat);
+      });
+      document.getElementById('stat-channels').textContent = `${activeSubCategories.size} / 5`;
+      renderEventList();
+    }
+
+    function toggleStreamPause() {
+      isStreamPaused = !isStreamPaused;
+      const btn = document.getElementById('btn-pause-stream');
+      if (btn) {
+        btn.textContent = isStreamPaused ? '▶ 恢复流' : '⏸ 暂停流';
+        btn.classList.toggle('active', isStreamPaused);
+      }
+      const pill = document.getElementById('debug-status-pill');
+      if (pill) {
+        if (isStreamPaused) {
+          pill.className = 'badge';
+          pill.textContent = '⏸ 事件流已暂停';
+        } else {
+          pill.className = 'badge online';
+          pill.textContent = '● 订阅连接正常 (10Hz)';
+        }
+      }
+    }
+
+    function clearEventLogs() {
+      fetch('/api/events/clear', { method: 'POST' }).catch(() => {});
+      allReceivedEvents = [];
+      ['chassis', 'navigation', 'safety', 'sensors', 'system'].forEach(c => {
+        const b = document.getElementById(`badge-${c}`);
+        if (b) b.textContent = '0';
+      });
+      document.getElementById('stat-total').textContent = '0';
+      document.getElementById('stat-displayed').textContent = '0';
+      document.getElementById('tab-count-stream').textContent = '0';
+      document.getElementById('header-event-count').textContent = '0';
+      renderEventList();
+    }
+
+    function exportEventsJson() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(allReceivedEvents, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `amr_events_${Date.now()}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    function triggerTestIO(key, val) {
+      fetch('/api/set_io', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: key, value: val })
+      }).catch(() => {});
+    }
+
+    function injectCustomDebugEvent(category, type, level, title, message) {
+      fetch('/api/events/inject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: category,
+          type: type,
+          level: level,
+          title: title,
+          message: message,
+          payload: { origin: "web_debug_console", timestamp: Date.now() }
+        })
+      }).catch(() => {});
+    }
+
+    // High frequency non-blocking Event Subscriber loop
+    let isPollingEvents = false;
+    async function startEventSubscriptionLoop() {
+      while (true) {
+        if (!isPollingEvents && !isStreamPaused) {
+          isPollingEvents = true;
+          try {
+            const url = `/api/events?since_id=${latestEventId}&limit=100`;
+            const res = await fetch(url);
+            if (res.ok) {
+              const data = await res.json();
+              if (data && Array.isArray(data.events) && data.events.length > 0) {
+                eventRateCounter += data.events.length;
+                for (const ev of data.events) {
+                  allReceivedEvents.push(ev);
+                  if (ev.id > latestEventId) latestEventId = ev.id;
+                }
+                // Cap client memory buffer to 1000
+                if (allReceivedEvents.length > 1000) {
+                  allReceivedEvents = allReceivedEvents.slice(-1000);
+                }
+
+                // Update category counts
+                if (data.category_counts) {
+                  for (const [cat, cnt] of Object.entries(data.category_counts)) {
+                    const badge = document.getElementById(`badge-${cat}`);
+                    if (badge) badge.textContent = cnt;
+                  }
+                }
+                document.getElementById('header-event-count').textContent = allReceivedEvents.length;
+                document.getElementById('stat-total').textContent = allReceivedEvents.length;
+
+                if (debugModalVisible && currentDebugTab === 'stream') {
+                  renderEventList();
+                }
+              }
+            }
+          } catch (e) {}
+          isPollingEvents = false;
+        }
+
+        // Rate calculator (every 1s)
+        const now = performance.now();
+        if (now - lastRateCalcTime >= 1000) {
+          currentEventRate = Math.round((eventRateCounter * 1000) / (now - lastRateCalcTime));
+          eventRateCounter = 0;
+          lastRateCalcTime = now;
+          const rateElem = document.getElementById('stat-rate');
+          if (rateElem) rateElem.textContent = currentEventRate;
+        }
+
+        if (debugModalVisible && currentDebugTab === 'topics') {
+          updateTopicInspector();
+        }
+
+        // If modal is open poll fast (120ms), if closed poll slow (500ms) to save CPU
+        await new Promise(r => setTimeout(r, debugModalVisible ? 120 : 500));
+      }
+    }
+    startEventSubscriptionLoop();
+
+    function renderEventList() {
+      const container = document.getElementById('eventStreamList');
+      if (!container) return;
+
+      const levelFilter = document.getElementById('levelFilter').value;
+      const searchKeyword = (document.getElementById('eventSearch').value || '').trim().toLowerCase();
+
+      // Filter events
+      const filtered = allReceivedEvents.filter(ev => {
+        // Channel filter
+        if (!activeSubCategories.has(ev.category)) return false;
+        // Level filter
+        if (levelFilter !== 'all' && ev.level !== levelFilter) return false;
+        // Search keyword filter
+        if (searchKeyword) {
+          const str = `${ev.title} ${ev.message} ${ev.type} ${ev.category} ${JSON.stringify(ev.payload)}`.toLowerCase();
+          if (!str.includes(searchKeyword)) return false;
+        }
+        return true;
+      });
+
+      document.getElementById('stat-displayed').textContent = filtered.length;
+      document.getElementById('tab-count-stream').textContent = filtered.length;
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div style="padding: 40px; text-align: center; color: #8b949e;">
+            <div style="font-size: 28px; margin-bottom: 8px;">📡</div>
+            <div>暂无符合筛选条件的事件帧</div>
+            <div style="font-size: 11px; margin-top: 4px; color: #58a6ff;">请检查上方频道勾选或下发一次导航/急停操作</div>
+          </div>`;
+        return;
+      }
+
+      // Render items (show latest 80 for high UI performance)
+      const slice = filtered.slice(-80);
+      let html = '';
+      for (const ev of slice) {
+        const catNameMap = {
+          chassis: "底盘动力",
+          navigation: "导航调度",
+          safety: "安全I/O",
+          sensors: "感知雷达",
+          system: "系统总线"
+        };
+        const hasPayload = ev.payload && Object.keys(ev.payload).length > 0;
+        html += `
+          <div class="event-card ${ev.category}">
+            <div class="event-header">
+              <div class="event-meta">
+                <span class="event-time">${ev.time_str || ''}</span>
+                <span class="event-cat-tag">${catNameMap[ev.category] || ev.category}</span>
+                <span class="event-level-tag ${ev.level || 'info'}">${(ev.level || 'info').toUpperCase()}</span>
+                <span class="event-title">${escapeHtml(ev.title)}</span>
+              </div>
+              <span style="font-family:monospace; font-size:10px; color:#8b949e;">#${ev.id}</span>
+            </div>
+            <div class="event-msg">${escapeHtml(ev.message)}</div>
+            ${hasPayload ? `
+              <button class="event-payload-btn" onclick="togglePayload('payload-${ev.id}')">查看报文 Payload ▼</button>
+              <pre class="event-payload-pre" id="payload-${ev.id}" style="display:none;">${escapeHtml(JSON.stringify(ev.payload, null, 2))}</pre>
+            ` : ''}
+          </div>
+        `;
+      }
+      container.innerHTML = html;
+
+      if (autoScroll) {
+        const scrollElem = document.getElementById('tab-content-stream');
+        if (scrollElem) scrollElem.scrollTop = scrollElem.scrollHeight;
+      }
+    }
+
+    function togglePayload(id) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function updateTopicInspector() {
+      if (!telemetry || telemetry.x === undefined) return;
+
+      // /cmd_vel
+      const cmdVx = document.getElementById('insp-cmd-vx');
+      const cmdVy = document.getElementById('insp-cmd-vy');
+      const cmdWz = document.getElementById('insp-cmd-wz');
+      if (cmdVx) cmdVx.textContent = (telemetry.vx || 0).toFixed(2) + ' m/s';
+      if (cmdVy) cmdVy.textContent = (telemetry.vy || 0).toFixed(2) + ' m/s';
+      if (cmdWz) cmdWz.textContent = (telemetry.wz || 0).toFixed(2) + ' rad/s';
+
+      // /odom
+      const odomX = document.getElementById('insp-odom-x');
+      const odomY = document.getElementById('insp-odom-y');
+      if (odomX) odomX.textContent = telemetry.x.toFixed(2) + ' m';
+      if (odomY) odomY.textContent = telemetry.y.toFixed(2) + ' m';
+      const deg = ((telemetry.yaw * 180 / Math.PI) % 360 + 360) % 360;
+      const cardinalDist = Math.min(deg % 90, 90 - (deg % 90));
+      const odomYaw = document.getElementById('insp-odom-yaw');
+      const odomYawRad = document.getElementById('insp-odom-yaw-rad');
+      if (odomYaw) odomYaw.textContent = deg.toFixed(1) + '°';
+      if (odomYawRad) odomYawRad.textContent = telemetry.yaw.toFixed(3) + ' rad';
+      const alignElem = document.getElementById('insp-odom-align');
+      if (alignElem) {
+        if (cardinalDist <= 3.0) {
+          alignElem.textContent = `✅ 严格平行/垂直 (${deg.toFixed(1)}°)`;
+          alignElem.style.color = '#3fb950';
+        } else {
+          alignElem.textContent = `⚠️ 转弯过渡角 (${deg.toFixed(1)}°)`;
+          alignElem.style.color = '#d29922';
+        }
+      }
+      const odomVx = document.getElementById('insp-odom-vx');
+      const odomWz = document.getElementById('insp-odom-wz');
+      if (odomVx) odomVx.textContent = (telemetry.vx || 0).toFixed(2);
+      if (odomWz) odomWz.textContent = (telemetry.wz || 0).toFixed(2);
+
+      // /joint_states
+      const chassisNameMap = {
+        diff_drive: "两轮差速 (Diff-Drive)",
+        single_steer: "单舵轮 (Single-Steer)",
+        dual_steer: "双舵轮全向 (Dual-Steer)"
+      };
+      const chassisElem = document.getElementById('insp-chassis-type');
+      if (chassisElem) chassisElem.textContent = chassisNameMap[telemetry.chassis_type] || telemetry.chassis_type;
+      if (telemetry.joint_states) {
+        const jNames = document.getElementById('insp-joints-names');
+        const jPos = document.getElementById('insp-joints-pos');
+        if (jNames) jNames.textContent = (telemetry.joint_states.names || []).join(', ');
+        if (jPos) jPos.textContent = JSON.stringify(telemetry.joint_states.positions || []);
+      }
+
+      // /io_states
+      if (telemetry.io_states) {
+        const isEstop = !!telemetry.io_states.is_emergency_stop;
+        const estopElem = document.getElementById('insp-io-estop');
+        if (estopElem) {
+          estopElem.textContent = isEstop ? '🛑 已触发按下 (急停抱死)' : '🟢 正常运行 (未触发)';
+          estopElem.style.color = isEstop ? '#f85149' : '#3fb950';
+        }
+
+        const inputs = telemetry.io_states.inputs || {};
+        const isBumper = !!(inputs.di_bumper_front || inputs.di_bumper_rear);
+        const bumpElem = document.getElementById('insp-io-bumper');
+        if (bumpElem) {
+          bumpElem.textContent = isBumper ? '💥 触碰受阻触发' : '🟢 正常释放';
+          bumpElem.style.color = isBumper ? '#f85149' : '#3fb950';
+        }
+
+        const isCargo = !!inputs.di_cargo_present;
+        const cargoElem = document.getElementById('insp-io-cargo');
+        if (cargoElem) {
+          cargoElem.textContent = isCargo ? '📦 托盘物料就位 (有货)' : '⚪ 空载位无货';
+          cargoElem.style.color = isCargo ? '#00ffcc' : '#8b949e';
+        }
+
+        const outputs = telemetry.io_states.outputs || {};
+        const brakeElem = document.getElementById('insp-io-brake');
+        if (brakeElem) brakeElem.textContent = outputs.do_brake_release ? '🟢 释放 (正常运转)' : '🛑 抱死 (制动)';
+        const gElem = document.getElementById('insp-io-green');
+        const yElem = document.getElementById('insp-io-yellow');
+        const rElem = document.getElementById('insp-io-red');
+        if (gElem) gElem.innerHTML = outputs.do_tower_green ? '<strong style="color:#3fb950">● ON</strong>' : '○ OFF';
+        if (yElem) yElem.innerHTML = outputs.do_tower_yellow ? '<strong style="color:#d29922">● ON</strong>' : '○ OFF';
+        if (rElem) rElem.innerHTML = outputs.do_tower_red ? '<strong style="color:#f85149">● ON</strong>' : '○ OFF';
+      }
+
+      // /scan
+      const minDist = telemetry.scan_min_dist !== undefined ? telemetry.scan_min_dist : 12.0;
+      const scanMin = document.getElementById('insp-scan-min');
+      if (scanMin) scanMin.textContent = (minDist < 11.0 ? minDist.toFixed(2) + ' m' : '> 12.0 m (无遮挡)');
+      const safetyElem = document.getElementById('insp-scan-safety');
+      if (safetyElem) {
+        if (minDist < 0.8) {
+          safetyElem.textContent = '🚨 极近障碍物阻挡 (防撞停机区)';
+          safetyElem.style.color = '#f85149';
+        } else if (minDist < 1.4) {
+          safetyElem.textContent = '⚠️ 减速预警区 (< 1.4m)';
+          safetyElem.style.color = '#d29922';
+        } else {
+          safetyElem.textContent = '✅ 畅通安全通道';
+          safetyElem.style.color = '#3fb950';
+        }
+      }
+
+      // /plan
+      const plannerMap = {
+        dijkstra: "Dijkstra 拓扑导轨路网",
+        astar: "A* 栅格搜索规划器",
+        direct: "直连导航模式"
+      };
+      const pEng = document.getElementById('insp-plan-engine');
+      const pStat = document.getElementById('insp-plan-status');
+      const pDist = document.getElementById('insp-plan-dist');
+      const pTgt = document.getElementById('insp-plan-target');
+      if (pEng) pEng.textContent = plannerMap[telemetry.planner_type] || telemetry.planner_type;
+      if (pStat) pStat.textContent = telemetry.nav_status || 'IDLE';
+      if (pDist) pDist.textContent = (telemetry.nav_dist_rem || 0).toFixed(2) + ' m';
+      if (pTgt) {
+        if (telemetry.target_goal) {
+          pTgt.textContent = `(${telemetry.target_goal.x.toFixed(1)}, ${telemetry.target_goal.y.toFixed(1)}) Yaw:${Math.round((telemetry.target_goal.yaw || 0)*180/Math.PI)}°`;
+        } else {
+          pTgt.textContent = '无目标';
+        }
+      }
+    }
+
+    // Initialize draggable debug dialog
+    initDialogDrag();
+
+    // ============================================================
+    // RASPBERRY PI PERFORMANCE MONITOR CLIENT
+    // ============================================================
+    let perfModalVisible = false;
+    let isPerfFullscreen = false;
+    let perfIntervalMs = 1000;
+    let perfTimer = null;
+    let isFetchingPerf = false;
+    let perfData = null;
+    let isDraggingPerfDialog = false;
+    let perfDragStartX = 0;
+    let perfDragStartY = 0;
+    let perfDialogStartLeft = 0;
+    let perfDialogStartTop = 0;
+
+    function togglePerfModal() {
+      perfModalVisible = !perfModalVisible;
+      const modal = document.getElementById('perfModal');
+      if (modal) modal.style.display = perfModalVisible ? 'flex' : 'none';
+      if (perfModalVisible) {
+        fetchPerfData();
+        startPerfPolling();
+        setTimeout(resizePerfCanvas, 50);
+      } else {
+        stopPerfPolling();
+      }
+    }
+
+    function togglePerfDock() {
+      const dialog = document.getElementById('perfDialog');
+      const btn = document.getElementById('btn-perf-dock-toggle');
+      if (dialog.classList.contains('fullscreen')) {
+        dialog.classList.remove('fullscreen');
+        const fsBtn = document.getElementById('btn-perf-fullscreen-toggle');
+        if (fsBtn) fsBtn.textContent = '⛶ 全屏';
+        isPerfFullscreen = false;
+      }
+      if (dialog.classList.contains('floating')) {
+        dialog.classList.remove('floating');
+        dialog.style.left = '';
+        dialog.style.top = '';
+        dialog.style.right = '';
+        dialog.style.bottom = '';
+        if (btn) btn.textContent = '🗗 自由悬浮';
+      } else {
+        dialog.classList.add('floating');
+        const rect = dialog.getBoundingClientRect();
+        dialog.style.left = Math.max(20, rect.left) + 'px';
+        dialog.style.top = Math.max(70, rect.top - 50) + 'px';
+        if (btn) btn.textContent = '🗔 靠底停靠';
+      }
+      setTimeout(resizePerfCanvas, 50);
+    }
+
+    function togglePerfMinimize() {
+      const dialog = document.getElementById('perfDialog');
+      const btn = document.getElementById('btn-perf-min-toggle');
+      dialog.classList.toggle('minimized');
+      const isMin = dialog.classList.contains('minimized');
+      if (btn) btn.textContent = isMin ? '🗖 展开' : '🗕 最小化';
+      if (!isMin) setTimeout(resizePerfCanvas, 50);
+    }
+
+    function togglePerfFullscreen() {
+      isPerfFullscreen = !isPerfFullscreen;
+      const dialog = document.getElementById('perfDialog');
+      const btn = document.getElementById('btn-perf-fullscreen-toggle');
+      if (isPerfFullscreen) {
+        dialog.classList.add('fullscreen');
+        if (btn) btn.textContent = '⛶ 还原窗口';
+      } else {
+        dialog.classList.remove('fullscreen');
+        if (btn) btn.textContent = '⛶ 全屏';
+      }
+      setTimeout(resizePerfCanvas, 50);
+    }
+
+    function changePerfInterval(val) {
+      perfIntervalMs = parseInt(val, 10) || 1000;
+      const pill = document.getElementById('perf-status-pill');
+      if (pill) {
+        pill.textContent = `● 采样正常 (${(1000 / perfIntervalMs).toFixed(1)}Hz)`;
+      }
+      if (perfModalVisible) {
+        startPerfPolling();
+      }
+    }
+
+    function startPerfPolling() {
+      stopPerfPolling();
+      perfTimer = setInterval(() => {
+        if (perfModalVisible) fetchPerfData();
+      }, perfIntervalMs);
+    }
+
+    function stopPerfPolling() {
+      if (perfTimer) {
+        clearInterval(perfTimer);
+        perfTimer = null;
+      }
+    }
+
+    async function fetchPerfData() {
+      if (isFetchingPerf) return;
+      isFetchingPerf = true;
+      try {
+        const res = await fetch('/api/system_perf');
+        if (res.ok) {
+          perfData = await res.json();
+          renderPerfUI(perfData);
+        }
+      } catch (e) {
+        console.warn('Failed to fetch system_perf', e);
+      } finally {
+        isFetchingPerf = false;
+      }
+    }
+
+    function fetchPerfDataImmediately() {
+      fetchPerfData();
+    }
+
+    function renderPerfUI(data) {
+      if (!data) return;
+      const host = data.host || {};
+      const rosTotal = data.ros_simulation_total || {};
+      const procs = data.processes || data.target_processes || [];
+      const history = data.history || [];
+
+      // 1. Host CPU
+      const cpuTotal = host.cpu_total_percent !== undefined ? host.cpu_total_percent : (host.cpu_total_pct !== undefined ? host.cpu_total_pct : 0);
+      const cpuVal = document.getElementById('perf-cpu-val');
+      const cpuBar = document.getElementById('perf-cpu-bar');
+      const cpuFreq = document.getElementById('perf-cpu-freq');
+      if (cpuVal) cpuVal.textContent = cpuTotal.toFixed(1);
+      if (cpuBar) {
+        cpuBar.style.width = Math.min(100, Math.max(0, cpuTotal)) + '%';
+        cpuBar.style.background = cpuTotal > 80 ? '#f85149' : (cpuTotal > 50 ? '#f59e0b' : '#38bdf8');
+      }
+      if (cpuFreq && host.cpu_freq_mhz) {
+        cpuFreq.textContent = `${host.cpu_freq_mhz.toFixed(0)} MHz`;
+      }
+
+      // Per-core breakdown
+      const cores = host.cpu_per_core || host.cpu_cores_pct || [];
+      for (let i = 0; i < 4; i++) {
+        const cVal = cores[i] !== undefined ? cores[i] : 0;
+        const valElem = document.getElementById(`core-val-${i}`);
+        const barElem = document.getElementById(`core-bar-${i}`);
+        if (valElem) valElem.textContent = `${cVal.toFixed(0)}%`;
+        if (barElem) barElem.style.height = `${Math.min(100, Math.max(0, cVal))}%`;
+      }
+
+      // 2. Host RAM
+      const ramUsed = host.memory_used_mb !== undefined ? host.memory_used_mb : (host.ram_used_mb || 0);
+      const ramTotal = host.memory_total_mb !== undefined ? host.memory_total_mb : (host.ram_total_mb || 0);
+      const ramPct = host.memory_percent !== undefined ? host.memory_percent : (host.ram_pct || 0);
+      const ramAvail = host.memory_free_mb !== undefined ? host.memory_free_mb : (host.ram_available_mb || 0);
+
+      const rUsedEl = document.getElementById('perf-ram-used');
+      const rTotEl = document.getElementById('perf-ram-total');
+      const rPctEl = document.getElementById('perf-ram-pct');
+      const rBarEl = document.getElementById('perf-ram-bar');
+      const rAvailEl = document.getElementById('perf-ram-avail');
+
+      if (rUsedEl) rUsedEl.textContent = ramUsed.toFixed(1);
+      if (rTotEl) rTotEl.textContent = ramTotal.toFixed(0);
+      if (rPctEl) rPctEl.textContent = `${ramPct.toFixed(1)}%`;
+      if (rBarEl) rBarEl.style.width = `${Math.min(100, Math.max(0, ramPct))}%`;
+      if (rAvailEl) rAvailEl.textContent = `可用: ${ramAvail.toFixed(1)} MB (${(100 - ramPct).toFixed(1)}%)`;
+
+      // 3. Hardware & Temp
+      const tempVal = host.cpu_temp_c || 0;
+      const tEl = document.getElementById('perf-temp-val');
+      if (tEl) {
+        tEl.textContent = tempVal.toFixed(1);
+        tEl.style.color = tempVal > 70 ? '#f85149' : (tempVal > 60 ? '#f59e0b' : '#3fb950');
+      }
+      const loadAvg = host.load_avg || [];
+      const loadEl = document.getElementById('perf-load-avg');
+      if (loadEl && loadAvg.length >= 3) {
+        loadEl.textContent = `负载: ${loadAvg[0].toFixed(2)}, ${loadAvg[1].toFixed(2)}, ${loadAvg[2].toFixed(2)}`;
+      }
+      const platEl = document.getElementById('perf-platform-info');
+      if (platEl) {
+        platEl.textContent = host.model || `ARM64 树莓派4B · ${cores.length || 4}核`;
+      }
+
+      // 4. ROS & Sim Total
+      const rosCpu = rosTotal.combined_cpu_percent !== undefined ? rosTotal.combined_cpu_percent : (rosTotal.cpu_pct || 0);
+      const rosRam = rosTotal.combined_rss_mb !== undefined ? rosTotal.combined_rss_mb : (rosTotal.ram_mb || 0);
+      const rosRamPct = rosTotal.combined_ram_percent !== undefined ? rosTotal.combined_ram_percent : (rosTotal.ram_pct || 0);
+      const rosCount = procs.length;
+
+      const rosCpuEl = document.getElementById('perf-ros-cpu');
+      const rosBarEl = document.getElementById('perf-ros-bar');
+      const rosRamEl = document.getElementById('perf-ros-ram');
+      const rosCountEl = document.getElementById('perf-ros-count');
+
+      if (rosCpuEl) rosCpuEl.textContent = rosCpu.toFixed(1);
+      if (rosBarEl) rosBarEl.style.width = `${Math.min(100, Math.max(0, rosCpu))}%`;
+      if (rosRamEl) rosRamEl.textContent = `内存耗用: ${rosRam.toFixed(1)} MB (${rosRamPct.toFixed(1)}%)`;
+      if (rosCountEl) rosCountEl.textContent = `${rosCount} 个关键目标进程`;
+
+      // Footer time
+      const footTime = document.getElementById('perf-footer-time');
+      if (footTime) {
+        const d = new Date();
+        footTime.textContent = `最近更新: ${d.toLocaleTimeString()}.${Math.floor(d.getMilliseconds() / 100)}`;
+      }
+
+      // 5. Target Process Table
+      renderProcessTable(procs);
+
+      // 6. Draw Trend Canvas
+      drawPerfChart(history);
+    }
+
+    function renderProcessTable(procs) {
+      const tbody = document.getElementById('perf-proc-tbody');
+      if (!tbody) return;
+      if (!procs || procs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#8b949e; padding:16px;">未检索到运行中的 ROS/仿真后台进程</td></tr>';
+        return;
+      }
+
+      let html = '';
+      for (const p of procs) {
+        const tagClass = p.key.includes('simulation') ? 'agv' : (p.key.includes('teleop') ? 'teleop' : 'nav');
+        const tagLabel = p.key.includes('simulation') ? 'KINEMATICS' : (p.key.includes('teleop') ? 'REST/SCHED' : 'NAV2');
+        const cpuP = (p.cpu_percent !== undefined ? p.cpu_percent : (p.cpu_pct || 0)).toFixed(1);
+        const ramMb = (p.memory_mb !== undefined ? p.memory_mb : (p.ram_rss_mb || 0)).toFixed(1);
+        const ramP = (p.memory_percent !== undefined ? p.memory_percent : (p.ram_pct || 0)).toFixed(2);
+        const statusIcon = p.status === 'running' ? '🟢' : '💤';
+        const isHighCpu = (p.cpu_percent || p.cpu_pct || 0) > 30;
+        const threadCount = p.threads || p.num_threads || 1;
+
+        html += `
+          <tr>
+            <td>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span class="proc-tag ${tagClass}">${tagLabel}</span>
+                <strong style="color:#f0f6fc; font-family:monospace;" title="${p.role || p.cmdline || ''}">${p.name}</strong>
+              </div>
+            </td>
+            <td style="font-family:monospace; color:#8b949e;">${p.pid}</td>
+            <td style="font-size:11px;">
+              <span>${statusIcon} ${p.status}</span>
+              <span style="color:#8b949e; font-size:10px; margin-left:4px;">(${threadCount} th)</span>
+            </td>
+            <td>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-family:monospace; font-weight:600; width:45px; ${isHighCpu ? 'color:#f85149;' : ''}">${cpuP}%</span>
+                <div class="perf-mini-bar-bg" style="flex:1;">
+                  <div class="perf-mini-bar-fill" style="width:${Math.min(100, Math.max(0, p.cpu_percent || p.cpu_pct || 0))}%; background:${isHighCpu ? '#f85149' : '#38bdf8'};"></div>
+                </div>
+              </div>
+            </td>
+            <td style="font-family:monospace; color:#e2e8f0;">${ramMb} MB</td>
+            <td style="font-family:monospace; color:#a78bfa;">${ramP}%</td>
+          </tr>
+        `;
+      }
+      tbody.innerHTML = html;
+    }
+
+    function resizePerfCanvas() {
+      const canvas = document.getElementById('perfChartCanvas');
+      if (!canvas) return;
+      const wrap = canvas.parentElement;
+      const dpr = window.devicePixelRatio || 1;
+      const w = wrap.clientWidth || 700;
+      const h = wrap.clientHeight || 85;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      if (perfData && perfData.history) {
+        drawPerfChart(perfData.history);
+      }
+    }
+    window.addEventListener('resize', () => {
+      if (perfModalVisible) resizePerfCanvas();
+    });
+
+    function drawPerfChart(history) {
+      const canvas = document.getElementById('perfChartCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.width;
+      const h = canvas.height;
+      if (w <= 0 || h <= 0) return;
+
+      ctx.clearRect(0, 0, w, h);
+
+      const padLeft = 40 * dpr;
+      const padRight = 15 * dpr;
+      const padTop = 15 * dpr;
+      const padBottom = 20 * dpr;
+      const plotW = w - padLeft - padRight;
+      const plotH = h - padTop - padBottom;
+
+      // Draw Grid & Y-Axis labels
+      ctx.strokeStyle = 'rgba(48, 54, 61, 0.5)';
+      ctx.fillStyle = '#8b949e';
+      ctx.font = `${9 * dpr}px monospace`;
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+
+      const gridSteps = [0, 25, 50, 75, 100];
+      for (const pct of gridSteps) {
+        const y = padTop + plotH - (pct / 100) * plotH;
+        ctx.beginPath();
+        ctx.setLineDash([3 * dpr, 3 * dpr]);
+        ctx.moveTo(padLeft, y);
+        ctx.lineTo(w - padRight, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillText(`${pct}%`, padLeft - 6 * dpr, y);
+      }
+
+      if (!history || history.length < 2) {
+        ctx.fillStyle = '#8b949e';
+        ctx.textAlign = 'center';
+        ctx.fillText('正在积累 60s 历史采样指标...', padLeft + plotW / 2, padTop + plotH / 2);
+        return;
+      }
+
+      const totalSlots = 60; // 60 seconds buffer
+      const count = history.length;
+      const stepX = plotW / (totalSlots - 1);
+      const startSlot = totalSlots - count;
+
+      // Helper to draw a curve
+      function plotValue(extractor, strokeColor, fillColor) {
+        ctx.beginPath();
+        let first = true;
+        for (let i = 0; i < count; i++) {
+          const val = Math.max(0, Math.min(100, extractor(history[i]) || 0));
+          const x = padLeft + (startSlot + i) * stepX;
+          const y = padTop + plotH - (val / 100) * plotH;
+          if (first) {
+            ctx.moveTo(x, y);
+            first = false;
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1.8 * dpr;
+        ctx.stroke();
+
+        if (fillColor) {
+          ctx.lineTo(padLeft + (startSlot + count - 1) * stepX, padTop + plotH);
+          ctx.lineTo(padLeft + startSlot * stepX, padTop + plotH);
+          ctx.closePath();
+          ctx.fillStyle = fillColor;
+          ctx.fill();
+        }
+      }
+
+      // Plot RAM % (purple)
+      plotValue(h => h.mem_percent !== undefined ? h.mem_percent : (h.ram_pct || 0), '#a78bfa', 'rgba(167, 139, 250, 0.08)');
+      // Plot Host CPU % (cyan)
+      plotValue(h => h.cpu_total !== undefined ? h.cpu_total : 0, '#38bdf8', 'rgba(56, 189, 248, 0.12)');
+      // Plot Combined ROS CPU % (orange)
+      plotValue(h => h.ros_cpu !== undefined ? h.ros_cpu : ((h.sim_cpu || 0) + (h.teleop_cpu || 0) + (h.map_cpu || 0)), '#f59e0b', null);
+    }
+
+    function initPerfDialogDrag() {
+      const header = document.getElementById('perfDialogHeader');
+      const dialog = document.getElementById('perfDialog');
+      if (!header || !dialog) return;
+
+      header.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button') || e.target.closest('select')) return;
+        if (dialog.classList.contains('fullscreen')) return;
+
+        if (!dialog.classList.contains('floating')) {
+          const rect = dialog.getBoundingClientRect();
+          dialog.classList.add('floating');
+          dialog.style.left = rect.left + 'px';
+          dialog.style.top = rect.top + 'px';
+          dialog.style.right = 'auto';
+          dialog.style.bottom = 'auto';
+          const btn = document.getElementById('btn-perf-dock-toggle');
+          if (btn) btn.textContent = '🗔 靠底停靠';
+        }
+
+        isDraggingPerfDialog = true;
+        perfDragStartX = e.clientX;
+        perfDragStartY = e.clientY;
+        const rect = dialog.getBoundingClientRect();
+        perfDialogStartLeft = rect.left;
+        perfDialogStartTop = rect.top;
+        e.preventDefault();
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDraggingPerfDialog) return;
+        const dx = e.clientX - perfDragStartX;
+        const dy = e.clientY - perfDragStartY;
+        dialog.style.left = Math.max(10, Math.min(window.innerWidth - 120, perfDialogStartLeft + dx)) + 'px';
+        dialog.style.top = Math.max(10, Math.min(window.innerHeight - 50, perfDialogStartTop + dy)) + 'px';
+      });
+
+      window.addEventListener('mouseup', () => {
+        isDraggingPerfDialog = false;
+      });
+    }
+
+    // Initialize draggable performance dialog
+    initPerfDialogDrag();
+
+    // ==========================================
+    // 🎬 AMR SIMULATION REPLAY & FLIGHT RECORDER
+    // ==========================================
+    let replayModalVisible = false;
+    let isReplayFullscreen = false;
+    let isDraggingReplayDialog = false;
+    let replayDragStartX = 0;
+    let replayDragStartY = 0;
+    let replayDialogStartLeft = 0;
+    let replayDialogStartTop = 0;
+
+    let isReplayActive = false;
+    let replayPlaying = false;
+    let replayTimer = null;
+    let replayPlaybackSpeed = 1.0;
+    let replayCurrentFrameIdx = 0;
+    let replaySessionsList = [];
+    let replaySessionData = null;
+    let isManualRecording = false;
+
+    function toggleReplayModal() {
+      replayModalVisible = !replayModalVisible;
+      const modal = document.getElementById('replayModal');
+      if (modal) modal.style.display = replayModalVisible ? 'flex' : 'none';
+      if (replayModalVisible) {
+        fetchReplaySessions();
+      }
+    }
+
+    function toggleReplayDock() {
+      const dialog = document.getElementById('replayDialog');
+      const btn = document.getElementById('btn-replay-dock-toggle');
+      if (dialog.classList.contains('fullscreen')) {
+        dialog.classList.remove('fullscreen');
+        const fsBtn = document.getElementById('btn-replay-fullscreen-toggle');
+        if (fsBtn) fsBtn.textContent = '⛶ 全屏';
+        isReplayFullscreen = false;
+      }
+      if (dialog.classList.contains('floating')) {
+        dialog.classList.remove('floating');
+        dialog.style.left = '';
+        dialog.style.top = '';
+        dialog.style.right = '';
+        dialog.style.bottom = '';
+        if (btn) btn.textContent = '🗗 自由悬浮';
+      } else {
+        dialog.classList.add('floating');
+        const rect = dialog.getBoundingClientRect();
+        dialog.style.left = Math.max(20, rect.left) + 'px';
+        dialog.style.top = Math.max(70, rect.top - 50) + 'px';
+        if (btn) btn.textContent = '🗔 靠底停靠';
+      }
+    }
+
+    function toggleReplayMinimize() {
+      const dialog = document.getElementById('replayDialog');
+      const btn = document.getElementById('btn-replay-min-toggle');
+      if (dialog) {
+        dialog.classList.toggle('minimized');
+        const isMin = dialog.classList.contains('minimized');
+        if (btn) btn.textContent = isMin ? '🗖 展开' : '🗕 最小化';
+      }
+    }
+
+    function toggleReplayFullscreen() {
+      const dialog = document.getElementById('replayDialog');
+      const btn = document.getElementById('btn-replay-fullscreen-toggle');
+      if (!dialog) return;
+      isReplayFullscreen = !isReplayFullscreen;
+      if (isReplayFullscreen) {
+        if (dialog.classList.contains('floating')) {
+          dialog.classList.remove('floating');
+        }
+        dialog.classList.add('fullscreen');
+        if (btn) btn.textContent = '🗗 还原';
+      } else {
+        dialog.classList.remove('fullscreen');
+        if (btn) btn.textContent = '⛶ 全屏';
+      }
+    }
+
+    function initReplayDialogDrag() {
+      const header = document.getElementById('replayDialogHeader');
+      const dialog = document.getElementById('replayDialog');
+      if (!header || !dialog) return;
+
+      header.addEventListener('mousedown', (e) => {
+        if (e.target.closest('button') || e.target.closest('select')) return;
+        if (dialog.classList.contains('fullscreen')) return;
+
+        if (!dialog.classList.contains('floating')) {
+          const rect = dialog.getBoundingClientRect();
+          dialog.classList.add('floating');
+          dialog.style.left = rect.left + 'px';
+          dialog.style.top = rect.top + 'px';
+          dialog.style.right = 'auto';
+          dialog.style.bottom = 'auto';
+          const btn = document.getElementById('btn-replay-dock-toggle');
+          if (btn) btn.textContent = '🗔 靠底停靠';
+        }
+
+        isDraggingReplayDialog = true;
+        replayDragStartX = e.clientX;
+        replayDragStartY = e.clientY;
+        const rect = dialog.getBoundingClientRect();
+        replayDialogStartLeft = rect.left;
+        replayDialogStartTop = rect.top;
+        e.preventDefault();
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDraggingReplayDialog) return;
+        const dx = e.clientX - replayDragStartX;
+        const dy = e.clientY - replayDragStartY;
+        dialog.style.left = Math.max(10, Math.min(window.innerWidth - 120, replayDialogStartLeft + dx)) + 'px';
+        dialog.style.top = Math.max(10, Math.min(window.innerHeight - 50, replayDialogStartTop + dy)) + 'px';
+      });
+
+      window.addEventListener('mouseup', () => {
+        isDraggingReplayDialog = false;
+      });
+    }
+
+    async function fetchReplaySessions(autoSelectLatest = false) {
+      try {
+        const res = await fetch('/api/replay/sessions');
+        if (!res.ok) return;
+        const data = await res.json();
+        replaySessionsList = data.sessions || [];
+
+        // Update header counter and dot
+        const countBadge = document.getElementById('header-replay-count');
+        if (countBadge) countBadge.textContent = `${replaySessionsList.length} 组`;
+
+        const dot = document.getElementById('header-replay-dot');
+        const pill = document.getElementById('replay-recording-pill');
+        if (data.is_recording) {
+          if (dot) dot.classList.add('recording');
+          if (pill) {
+            pill.textContent = '● 正在录制任务航迹...';
+            pill.style.background = 'rgba(239,68,68,0.3)';
+            pill.style.borderColor = '#ef4444';
+            pill.style.color = '#fca5a5';
+          }
+        } else {
+          if (dot) dot.classList.remove('recording');
+          if (pill) {
+            pill.textContent = '● 实时录制就绪';
+            pill.style.background = 'rgba(239,68,68,0.15)';
+            pill.style.borderColor = 'rgba(239,68,68,0.3)';
+            pill.style.color = '#fca5a5';
+          }
+        }
+
+        // Populate session select dropdown
+        const select = document.getElementById('replaySessionSelect');
+        if (select) {
+          const currentVal = select.value;
+          select.innerHTML = '';
+          if (replaySessionsList.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = '-- 暂无飞行航迹 (点击地图导航或手动录制) --';
+            select.appendChild(opt);
+          } else {
+            replaySessionsList.forEach((s, idx) => {
+              const opt = document.createElement('option');
+              opt.value = s.id;
+              const sName = s.title || s.name || s.id;
+              const fCount = s.total_frames !== undefined ? s.total_frames : (s.frames_count || (s.frames ? s.frames.length : 0));
+              const dur = (s.duration_s !== undefined ? s.duration_s : (s.duration || 0)).toFixed(1);
+              const dist = (s.total_distance_m !== undefined ? s.total_distance_m : (s.metrics ? s.metrics.total_distance_m || 0 : 0)).toFixed(1);
+              const dateStr = s.start_time ? new Date(s.start_time * 1000).toLocaleTimeString() : '--';
+              opt.textContent = `[${idx + 1}] ${sName} (${fCount}帧 / ${dur}s / ${dist}m) @ ${dateStr}`;
+              select.appendChild(opt);
+            });
+            if (autoSelectLatest && replaySessionsList.length > 0) {
+              select.value = replaySessionsList[0].id;
+              onSelectReplaySession(replaySessionsList[0].id);
+            } else if (currentVal && replaySessionsList.some(s => s.id === currentVal)) {
+              select.value = currentVal;
+            } else {
+              select.value = replaySessionsList[0].id;
+              onSelectReplaySession(replaySessionsList[0].id);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch replay sessions:', e);
+      }
+    }
+
+    async function onSelectReplaySession(sessionId) {
+      if (!sessionId) {
+        replaySessionData = null;
+        exitReplayMode();
+        return;
+      }
+      try {
+        const res = await fetch(`/api/replay/session?id=${encodeURIComponent(sessionId)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data || !data.frames || data.frames.length === 0) {
+          alert('该会话没有录制到有效的轨迹帧数据');
+          return;
+        }
+        replaySessionData = data;
+        loadReplaySessionUI(data);
+      } catch (e) {
+        console.error('Failed to load replay session:', e);
+      }
+    }
+
+    function loadReplaySessionUI(session) {
+      // Analytical summary metrics (compatible with top-level session keys and session.metrics)
+      const m = session.metrics || {};
+      const totalDist = session.total_distance_m !== undefined ? session.total_distance_m : (m.total_distance_m !== undefined ? m.total_distance_m : 0);
+      const dur = session.duration_s !== undefined ? session.duration_s : (m.duration_seconds !== undefined ? m.duration_seconds : 0);
+      const peakVel = session.max_speed_mps !== undefined ? session.max_speed_mps : (m.peak_linear_velocity_mps !== undefined ? m.peak_linear_velocity_mps : 0);
+      const avgVel = session.avg_speed_mps !== undefined ? session.avg_speed_mps : (m.avg_linear_velocity_mps !== undefined ? m.avg_linear_velocity_mps : 0);
+      const minObs = session.min_obstacle_dist_m !== undefined ? session.min_obstacle_dist_m : m.closest_obstacle_m;
+
+      const distEl = document.getElementById('stat-replay-dist');
+      if (distEl) distEl.textContent = totalDist.toFixed(2);
+
+      const durEl = document.getElementById('stat-replay-duration');
+      if (durEl) durEl.textContent = dur.toFixed(1);
+
+      const peakEl = document.getElementById('stat-replay-peak-vel');
+      if (peakEl) peakEl.textContent = peakVel.toFixed(2);
+
+      const avgEl = document.getElementById('stat-replay-avg-vel');
+      if (avgEl) avgEl.textContent = avgVel.toFixed(2);
+
+      const minObsEl = document.getElementById('stat-replay-min-obs');
+      if (minObsEl) {
+        minObsEl.textContent = (minObs !== null && minObs !== undefined && minObs < 90)
+          ? minObs.toFixed(2)
+          : '--';
+      }
+
+      // Configure scrubber slider
+      const scrubber = document.getElementById('replayScrubber');
+      if (scrubber) {
+        scrubber.min = 0;
+        scrubber.max = Math.max(0, session.frames.length - 1);
+        scrubber.value = 0;
+      }
+      replayCurrentFrameIdx = 0;
+
+      // Enable export button
+      const expBtn = document.getElementById('btn-export-json');
+      if (expBtn) expBtn.disabled = false;
+
+      // Activate replay canvas mode & banner
+      isReplayActive = true;
+      const banner = document.getElementById('replayCanvasBanner');
+      if (banner) {
+        banner.style.display = 'flex';
+        const titleEl = document.getElementById('replay-banner-title');
+        const sTitle = (session.metadata && session.metadata.title) || session.title || session.name || session.id;
+        if (titleEl) titleEl.textContent = `正在回放仿真航迹: ${sTitle}`;
+      }
+
+      updateReplayUIForCurrentFrame();
+    }
+
+    function updateReplayUIForCurrentFrame() {
+      if (!replaySessionData || !replaySessionData.frames || replaySessionData.frames.length === 0) return;
+      const totalFrames = replaySessionData.frames.length;
+      if (replayCurrentFrameIdx < 0) replayCurrentFrameIdx = 0;
+      if (replayCurrentFrameIdx >= totalFrames) replayCurrentFrameIdx = totalFrames - 1;
+
+      const frame = replaySessionData.frames[replayCurrentFrameIdx];
+      const scrubber = document.getElementById('replayScrubber');
+      if (scrubber) scrubber.value = replayCurrentFrameIdx;
+
+      // Time display formatted mm:ss.s
+      const currSec = frame.rel_t !== undefined ? frame.rel_t : (frame.rel_time || 0);
+      const totalSec = replaySessionData.duration_s !== undefined ? replaySessionData.duration_s : ((replaySessionData.metrics && replaySessionData.metrics.duration_seconds) || (replaySessionData.frames[totalFrames - 1].rel_t || 0));
+
+      function formatTime(s) {
+        const m = Math.floor(s / 60);
+        const rem = (s % 60).toFixed(1);
+        return `${m < 10 ? '0' : ''}${m}:${rem < 10 ? '0' : ''}${rem}`;
+      }
+
+      const timeText = `${formatTime(currSec)} / ${formatTime(totalSec)} (帧: ${replayCurrentFrameIdx + 1} / ${totalFrames})`;
+      const timeDisplay = document.getElementById('replayTimeDisplay');
+      if (timeDisplay) timeDisplay.textContent = timeText;
+
+      const bannerTime = document.getElementById('replay-banner-time');
+      if (bannerTime) bannerTime.textContent = formatTime(currSec);
+
+      // Frame Instant Breakdown Grid
+      const posEl = document.getElementById('instant-pos');
+      if (posEl && frame.pose) posEl.textContent = `${frame.pose.x.toFixed(2)}, ${frame.pose.y.toFixed(2)} m`;
+
+      const yawRad = frame.pose ? frame.pose.yaw : 0;
+      const yawDeg = frame.pose && frame.pose.yaw_deg !== undefined ? frame.pose.yaw_deg : (yawRad * 180 / Math.PI).toFixed(1);
+      const yawEl = document.getElementById('instant-yaw');
+      if (yawEl) yawEl.textContent = `${yawRad.toFixed(2)} rad (${yawDeg}°)`;
+
+      const vx = frame.vel ? frame.vel.vx : (frame.speeds ? frame.speeds.vx : 0);
+      const wz = frame.vel ? frame.vel.wz : (frame.speeds ? frame.speeds.wz : 0);
+      const velEl = document.getElementById('instant-vel');
+      if (velEl) velEl.textContent = `${(vx || 0).toFixed(2)} m/s, ${(wz || 0).toFixed(2)} r/s`;
+
+      const cmd_vx = frame.cmd ? frame.cmd.vx : (frame.commands && frame.commands.cmd_vel ? frame.commands.cmd_vel.vx : 0);
+      const cmd_wz = frame.cmd ? frame.cmd.wz : (frame.commands && frame.commands.cmd_vel ? frame.commands.cmd_vel.wz : 0);
+      const cmdEl = document.getElementById('instant-cmd');
+      if (cmdEl) cmdEl.textContent = `vx:${(cmd_vx || 0).toFixed(2)}, wz:${(cmd_wz || 0).toFixed(2)}`;
+
+      const ioEl = document.getElementById('instant-io');
+      if (ioEl && frame.io) {
+        const isEstop = (frame.io.estop || frame.io.is_emergency_stop) ? '⚠️急停' : '正常';
+        const isBumper = (frame.io.bumper || (frame.io.inputs && frame.io.inputs.di_bumper_front)) ? '触边报警' : '解除';
+        const isCargo = (frame.io.cargo || (frame.io.inputs && frame.io.inputs.di_cargo_present)) ? '载货' : '空载';
+        ioEl.textContent = `${isEstop} / ${isBumper} / ${isCargo}`;
+      }
+
+      const navSt = frame.nav ? frame.nav.status : (frame.status ? frame.status.nav_status : 'IDLE');
+      const soc = (frame.status && frame.status.battery_soc) ? frame.status.battery_soc : 100;
+      const statusEl = document.getElementById('instant-status');
+      if (statusEl) statusEl.textContent = `${soc}% / ${navSt}`;
+
+      const pathPtsEl = document.getElementById('instant-path-pts');
+      if (pathPtsEl) {
+        const ptsCount = (frame.perception && frame.perception.plan_path ? frame.perception.plan_path.length : 0)
+          || (replaySessionData.planned_route && replaySessionData.planned_route.plan_path ? replaySessionData.planned_route.plan_path.length : 0)
+          || (replaySessionData.metadata && replaySessionData.metadata.plan_path ? replaySessionData.metadata.plan_path.length : 0);
+        pathPtsEl.textContent = `${ptsCount} 点`;
+      }
+
+      const minObs = frame.perception ? (frame.perception.min_dist !== undefined ? frame.perception.min_dist : frame.perception.min_obstacle_dist) : null;
+      const obsEl = document.getElementById('instant-obs-dist');
+      if (obsEl) {
+        obsEl.textContent = (minObs !== null && minObs !== undefined && minObs < 90)
+          ? `${minObs.toFixed(2)} m`
+          : '-- m';
+      }
+
+      const ts = frame.t || frame.timestamp;
+      const tsEl = document.getElementById('replay-frame-timestamp');
+      if (tsEl && ts) {
+        tsEl.textContent = `UTC: ${new Date(ts * 1000).toISOString().substr(11, 12)}`;
+      }
+    }
+
+    function onReplaySeek(val) {
+      replayCurrentFrameIdx = parseInt(val, 10);
+      updateReplayUIForCurrentFrame();
+    }
+
+    function toggleReplayPlay() {
+      if (replayPlaying) {
+        pauseReplay();
+      } else {
+        startReplayPlayback();
+      }
+    }
+
+    function startReplayPlayback() {
+      if (!replaySessionData || !replaySessionData.frames || replaySessionData.frames.length === 0) return;
+      replayPlaying = true;
+      const playBtnText = document.getElementById('play-btn-text');
+      const playBtnIcon = document.getElementById('play-btn-icon');
+      if (playBtnText) playBtnText.textContent = '暂停回放';
+      if (playBtnIcon) playBtnIcon.textContent = '⏸';
+
+      if (replayCurrentFrameIdx >= replaySessionData.frames.length - 1) {
+        replayCurrentFrameIdx = 0;
+      }
+
+      scheduleNextReplayTick();
+    }
+
+    function pauseReplay() {
+      replayPlaying = false;
+      if (replayTimer) {
+        clearTimeout(replayTimer);
+        replayTimer = null;
+      }
+      const playBtnText = document.getElementById('play-btn-text');
+      const playBtnIcon = document.getElementById('play-btn-icon');
+      if (playBtnText) playBtnText.textContent = '播放回放';
+      if (playBtnIcon) playBtnIcon.textContent = '▶';
+    }
+
+    function scheduleNextReplayTick() {
+      if (!replayPlaying) return;
+      const intervalMs = Math.max(15, Math.round(100 / replayPlaybackSpeed));
+      replayTimer = setTimeout(() => {
+        if (!replayPlaying || !replaySessionData) return;
+        replayCurrentFrameIdx++;
+        if (replayCurrentFrameIdx >= replaySessionData.frames.length) {
+          const loopCheck = document.getElementById('replayLoopCheck');
+          if (loopCheck && loopCheck.checked) {
+            replayCurrentFrameIdx = 0;
+          } else {
+            replayCurrentFrameIdx = replaySessionData.frames.length - 1;
+            pauseReplay();
+            updateReplayUIForCurrentFrame();
+            return;
+          }
+        }
+        updateReplayUIForCurrentFrame();
+        scheduleNextReplayTick();
+      }, intervalMs);
+    }
+
+    function stepReplayFrame(delta) {
+      pauseReplay();
+      if (!replaySessionData || !replaySessionData.frames) return;
+      replayCurrentFrameIdx += delta;
+      updateReplayUIForCurrentFrame();
+    }
+
+    function restartReplay() {
+      replayCurrentFrameIdx = 0;
+      updateReplayUIForCurrentFrame();
+    }
+
+    function setReplaySpeed(speed, btn) {
+      replayPlaybackSpeed = speed;
+      const pills = document.querySelectorAll('.speed-pill');
+      pills.forEach(p => p.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      if (replayPlaying) {
+        if (replayTimer) clearTimeout(replayTimer);
+        scheduleNextReplayTick();
+      }
+    }
+
+    function exitReplayMode() {
+      pauseReplay();
+      isReplayActive = false;
+      const banner = document.getElementById('replayCanvasBanner');
+      if (banner) banner.style.display = 'none';
+    }
+
+    async function toggleManualRecording() {
+      try {
+        const action = isManualRecording ? 'stop' : 'start';
+        const res = await fetch('/api/replay/record', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: action, name: `手动录制航迹 #${Date.now().toString().slice(-4)}` })
+        });
+        const data = await res.json();
+        isManualRecording = (action === 'start');
+
+        const btn = document.getElementById('btn-manual-record');
+        const icon = document.getElementById('manual-record-icon');
+        const txt = document.getElementById('manual-record-text');
+        if (isManualRecording) {
+          if (btn) {
+            btn.style.background = '#dc2626';
+            btn.style.borderColor = '#ef4444';
+            btn.style.color = '#fff';
+          }
+          if (icon) icon.textContent = '⏹';
+          if (txt) txt.textContent = '停止手动录制';
+        } else {
+          if (btn) {
+            btn.style.background = '';
+            btn.style.borderColor = 'rgba(239,68,68,0.5)';
+            btn.style.color = '#f87171';
+          }
+          if (icon) icon.textContent = '⏺';
+          if (txt) txt.textContent = '开始手动录制';
+          // Refresh sessions list
+          await fetchReplaySessions(true);
+        }
+      } catch (e) {
+        console.error('Failed to toggle manual recording:', e);
+      }
+    }
+
+    async function captureRollingSession(durationSec = 30) {
+      try {
+        const res = await fetch('/api/replay/record', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'capture_rolling',
+            duration: durationSec,
+            name: `近${durationSec}秒快速提取航迹 #${Date.now().toString().slice(-4)}`
+          })
+        });
+        const data = await res.json();
+        if (data.session) {
+          await fetchReplaySessions(true);
+        } else {
+          alert('提取失败或实时缓存为空');
+        }
+      } catch (e) {
+        console.error('Failed to capture rolling session:', e);
+      }
+    }
+
+    function downloadSessionJSON() {
+      if (!replaySessionData) return;
+      const jsonStr = JSON.stringify(replaySessionData, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `amr_flight_log_${replaySessionData.id || 'mission'}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    // Initialize draggable replay dialog & fetch sessions at start
+    initReplayDialogDrag();
+    fetchReplaySessions();
+    setInterval(fetchReplaySessions, 3000);
+  </script>
+</body>
+</html>
