@@ -2339,6 +2339,43 @@
         </div>
       </div>
 
+      <!-- 激光雷达传感器配置 (密度与频率) -->
+      <div class="card" id="card-lidar-config">
+        <h3>
+          <span>📡 激光雷达参数配置 (密度与帧率)</span>
+          <span class="badge" id="lidar-rays-sec-badge" style="background:rgba(56,189,248,0.15); color:#38bdf8; font-size:10px; font-weight:600;">3,600 rays/s</span>
+        </h3>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:8px;">
+          <div>
+            <label style="font-size:11px; color:#8b949e; display:block; margin-bottom:4px;">角分辨率 (密度/线束):</label>
+            <select class="custom-select" id="lidarResolutionSelect" onchange="updateLidarConfig()" style="width:100%; font-size:11px;">
+              <option value="90">4.0° (90线 - 极简)</option>
+              <option value="180">2.0° (180线 - 快速)</option>
+              <option value="360" selected>1.0° (360线 - 标配)</option>
+              <option value="720">0.5° (720线 - 高密)</option>
+              <option value="1080">0.33° (1080线 - 超清)</option>
+              <option value="1440">0.25° (1440线 - 极密)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px; color:#8b949e; display:block; margin-bottom:4px;">扫描帧率 (频率/刷新率):</label>
+            <select class="custom-select" id="lidarFreqSelect" onchange="updateLidarConfig()" style="width:100%; font-size:11px;">
+              <option value="5">5 Hz (低频省电)</option>
+              <option value="10" selected>10 Hz (标准工业)</option>
+              <option value="15">15 Hz (平滑感知)</option>
+              <option value="20">20 Hz (高速巡检)</option>
+              <option value="25">25 Hz (高频避障)</option>
+              <option value="30">30 Hz (极速扫描)</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#8b949e; background:rgba(255,255,255,0.03); padding:5px 8px; border-radius:4px; border:1px solid rgba(255,255,255,0.05);">
+          <span>点云密度: <b id="lidar-active-beams" style="color:#00ffcc;">360</b> 线</span>
+          <span>扫描频率: <b id="lidar-active-freq" style="color:#f59e0b;">10.0</b> Hz</span>
+          <span>总吞吐: <b id="lidar-active-throughput" style="color:#38bdf8;">3,600</b> rays/s</span>
+        </div>
+      </div>
+
       <!-- 仓储任务调度中心 -->
       <div class="card">
         <h3>
@@ -2779,6 +2816,11 @@
         }
       }
 
+      // Update Lidar config UI if present in telemetry
+      if (telemetry.lidar_config) {
+        applyLidarConfigUI(telemetry.lidar_config);
+      }
+
       // Dynamically populate stations for active scenario
       const curSc = telemetry.active_scenario || (telemetry.scenario_metadata && telemetry.scenario_metadata.id);
       if (curSc && curSc !== lastRenderedScenario) {
@@ -2890,6 +2932,60 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: type })
       });
+    }
+
+    async function updateLidarConfig() {
+      const resSelect = document.getElementById('lidarResolutionSelect');
+      const freqSelect = document.getElementById('lidarFreqSelect');
+      const beams = parseInt(resSelect ? resSelect.value : 360, 10);
+      const freq = parseFloat(freqSelect ? freqSelect.value : 10.0);
+
+      try {
+        const res = await fetch('/api/lidar_config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ beams: beams, freq_hz: freq })
+        });
+        const data = await res.json();
+        if (data.status === 'ok' && data.config) {
+          applyLidarConfigUI(data.config);
+        }
+      } catch (err) {
+        console.error('Failed to update LiDAR config:', err);
+      }
+    }
+
+    function applyLidarConfigUI(cfg) {
+      if (!cfg) return;
+      const bBadge = document.getElementById('lidar-rays-sec-badge');
+      const bBeams = document.getElementById('lidar-active-beams');
+      const bFreq = document.getElementById('lidar-active-freq');
+      const bTput = document.getElementById('lidar-active-throughput');
+      const resSelect = document.getElementById('lidarResolutionSelect');
+      const freqSelect = document.getElementById('lidarFreqSelect');
+
+      const beams = cfg.beams || 360;
+      const freq = cfg.freq_hz || 10.0;
+      const totalRays = cfg.total_rays_per_sec || Math.round(beams * freq);
+
+      if (bBadge) bBadge.textContent = `${Number(totalRays).toLocaleString()} rays/s`;
+      if (bBeams) bBeams.textContent = beams;
+      if (bFreq) bFreq.textContent = `${Number(freq).toFixed(1)}`;
+      if (bTput) bTput.textContent = Number(totalRays).toLocaleString();
+
+      if (document.activeElement !== resSelect && resSelect) {
+        if (resSelect.value != beams) {
+          const opt = resSelect.querySelector(`option[value="${beams}"]`);
+          if (opt) resSelect.value = beams;
+        }
+      }
+      if (document.activeElement !== freqSelect && freqSelect) {
+        const roundFreq = Math.round(freq);
+        if (freqSelect.value != roundFreq) {
+          const opt = freqSelect.querySelector(`option[value="${roundFreq}"]`);
+          if (opt) freqSelect.value = roundFreq;
+        }
+      }
     }
 
     function toggleIO(key) {

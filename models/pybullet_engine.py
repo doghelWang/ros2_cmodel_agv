@@ -56,6 +56,10 @@ class PyBulletAGVEngine:
         # Profiling & Diagnostics
         self.last_step_ms = 0.0
         self.physics_step_count = 0
+        self.lidar_scan_freq_hz = 10.0
+        self.lidar_beams = 360
+        self.last_ray_count = 360
+        self.last_raycast_ms = 3.0
 
     def _load_robot(self, x: float, y: float, yaw: float):
         if self.robot_id is not None:
@@ -273,7 +277,8 @@ class PyBulletAGVEngine:
 
         step_ms = max(0.01, self.last_step_ms)
         ray_ms = max(0.01, getattr(self, "last_raycast_ms", 3.2))
-        ray_count = getattr(self, "last_ray_count", 360)
+        ray_count = getattr(self, "last_ray_count", getattr(self, "lidar_beams", 360))
+        freq_hz = getattr(self, "lidar_scan_freq_hz", 10.0)
 
         return {
             "engine": "PyBullet 3.2.7 (Bullet Physics 3 C++ Core)",
@@ -292,8 +297,8 @@ class PyBulletAGVEngine:
                 "simulated_joints": len(self.joint_indices),
                 "active_contact_points": len(contacts),
                 "lidar_beams_per_scan": ray_count,
-                "lidar_scan_freq_hz": 10.0,
-                "lidar_rays_per_second": int(ray_count * 10.0),
+                "lidar_scan_freq_hz": round(freq_hz, 1),
+                "lidar_rays_per_second": int(ray_count * freq_hz),
                 "physics_steps_total": self.physics_step_count
             },
             "performance": {
@@ -302,8 +307,8 @@ class PyBulletAGVEngine:
                 "physics_capacity_hz": round(1000.0 / step_ms, 0),
                 "raycast_throughput_rays_per_ms": round(ray_count / ray_ms, 1),
                 "step_cpu_time_pct": round((step_ms * 50.0 / 1000.0) * 100.0, 2),
-                "raycast_cpu_time_pct": round((ray_ms * 10.0 / 1000.0) * 100.0, 2),
-                "combined_core_load_pct": round((step_ms * 50.0 / 1000.0 + ray_ms * 10.0 / 1000.0) * 100.0, 2)
+                "raycast_cpu_time_pct": round((ray_ms * freq_hz / 1000.0) * 100.0, 2),
+                "combined_core_load_pct": round((step_ms * 50.0 / 1000.0 + ray_ms * freq_hz / 1000.0) * 100.0, 2)
             }
         }
 

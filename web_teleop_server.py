@@ -592,6 +592,7 @@ class WebTeleopBridge(Node):
         self.scenario_pub = self.create_publisher(String, '/set_map_scenario', 10)
         self.io_cmd_pub = self.create_publisher(String, '/set_io', 10)
         self.obstacle_pub = self.create_publisher(String, '/set_obstacles', 10)
+        self.lidar_config_pub = self.create_publisher(String, '/set_lidar_config', 10)
 
         self.odom_sub = self.create_subscription(Odometry, '/odom', self.on_odom, 10)
         self.scan_sub = self.create_subscription(LaserScan, '/scan', self.on_scan, 10)
@@ -614,6 +615,13 @@ class WebTeleopBridge(Node):
         self.active_chassis_type = "diff_drive"
         self.current_mission_id = 0
 
+        self.lidar_config = {
+            "beams": 360,
+            "angle_resolution_deg": 1.0,
+            "freq_hz": 10.0,
+            "range_max": 12.0
+        }
+
         self.event_hub = event_hub
         self.last_cmd_emit_time = 0.0
         self.last_lidar_alert_time = 0.0
@@ -628,6 +636,7 @@ class WebTeleopBridge(Node):
             "chassis_type": self.active_chassis_type,
             "planner_type": self.active_planner,
             "active_scenario": self.active_scenario,
+            "lidar_config": self.lidar_config,
             "scenario_metadata": self.dijkstra_planner.get_scenario_metadata(),
             "scan_ranges": [],
             "scan_angle_min": -2.35,
@@ -771,6 +780,36 @@ class WebTeleopBridge(Node):
             {"scenario_id": scenario_id, "name": meta["name"], "origin": origin}
         )
 
+    def set_lidar_config(self, beams=None, angle_resolution_deg=None, freq_hz=None, range_max=None):
+        with self.lock:
+            if angle_resolution_deg is not None and float(angle_resolution_deg) > 0:
+                beams = int(round(360.0 / float(angle_resolution_deg)))
+            if beams is not None:
+                beams = max(10, min(3600, int(beams)))
+                self.lidar_config["beams"] = beams
+                self.lidar_config["angle_resolution_deg"] = round(360.0 / beams, 3)
+            if freq_hz is not None:
+                freq_hz = max(1.0, min(50.0, float(freq_hz)))
+                self.lidar_config["freq_hz"] = round(freq_hz, 1)
+            if range_max is not None:
+                self.lidar_config["range_max"] = round(float(range_max), 2)
+
+            self.telemetry["lidar_config"] = dict(self.lidar_config)
+            payload = dict(self.lidar_config)
+
+        msg = String()
+        msg.data = json.dumps(payload)
+        self.lidar_config_pub.publish(msg)
+
+        self.get_logger().info(f"Updated LiDAR config: {payload}")
+        self.event_hub.emit(
+            "sensors", "LIDAR_CONFIG_CHANGED", "info",
+            "激光雷达参数动态更新",
+            f"线束: {payload['beams']} (角分辨率 {payload['angle_resolution_deg']}°), 帧率: {payload['freq_hz']} Hz",
+            payload
+        )
+        return payload
+
     def on_odom(self, msg: Odometry):
         with self.lock:
             self.telemetry["x"] = float(msg.pose.pose.position.x)
@@ -796,7 +835,8 @@ class WebTeleopBridge(Node):
     def on_scan(self, msg: LaserScan):
         with self.lock:
             raw = list(msg.ranges)
-            step = max(1, len(raw) // 36)
+            # Adaptively stream points: for <= 720 points, stream 1:1; for larger (e.g. 1080/1440), step = len(raw)//720
+            step = 1 if len(raw) <= 720 else max(1, len(raw) // 720)
             valid_ranges = [r for r in raw if not (math.isinf(r) or math.isnan(r))]
             min_dist = min(valid_ranges) if valid_ranges else 12.0
             self.telemetry["scan_ranges"] = [
@@ -808,6 +848,17 @@ class WebTeleopBridge(Node):
             self.telemetry["scan_angle_inc"] = float(msg.angle_increment * step)
             self.telemetry["scan_min_dist"] = round(min_dist, 2)
             cur_vx = self.telemetry["vx"]
+
+            # Update live lidar configuration feedback
+            scan_time = float(msg.scan_time) if msg.scan_time > 0 else 0.1
+            freq_hz = round(1.0 / scan_time, 1)
+            self.telemetry["lidar_config"] = {
+                "beams": len(raw),
+                "angle_resolution_deg": round(math.degrees(msg.angle_increment), 2),
+                "freq_hz": freq_hz,
+                "total_rays_per_sec": int(len(raw) * freq_hz),
+                "range_max": float(msg.range_max)
+            }
 
         now = time.time()
         if min_dist < 1.1 and abs(cur_vx) > 0.15 and (now - self.last_lidar_alert_time > 2.0):
@@ -1389,6 +1440,14 @@ class TeleopHTTPHandler(SimpleHTTPRequestHandler):
             with bridge_node.lock:
                 bm = bridge_node.telemetry.get("bullet_metrics") or (perf_monitor.latest_stats.get("bullet_simulation") if perf_monitor else {})
             self.wfile.write(json.dumps(bm or {}).encode("utf-8"))
+        elif parsed.path == "/api/lidar_config":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-cache, no-store")
+            self.end_headers()
+            cfg = bridge_node.lidar_config if bridge_node else {}
+            self.wfile.write(json.dumps(cfg).encode("utf-8"))
         elif parsed.path == "/api/replay/sessions":
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -1473,6 +1532,21 @@ class TeleopHTTPHandler(SimpleHTTPRequestHandler):
             ptype = str(req.get("type", "dijkstra"))
             if bridge_node:
                 bridge_node.set_planner_type(ptype)
+        elif parsed.path == "/api/lidar_config":
+            beams = req.get("beams")
+            angle_res = req.get("angle_resolution_deg") or req.get("resolution")
+            freq = req.get("freq_hz") or req.get("freq") or req.get("rate")
+            range_max = req.get("range_max")
+            if bridge_node:
+                cfg = bridge_node.set_lidar_config(
+                    beams=int(beams) if beams is not None else None,
+                    angle_resolution_deg=float(angle_res) if angle_res is not None else None,
+                    freq_hz=float(freq) if freq is not None else None,
+                    range_max=float(range_max) if range_max is not None else None
+                )
+                res = {"status": "ok", "config": cfg}
+            else:
+                res = {"status": "error", "message": "bridge_node not initialized"}
         elif parsed.path == "/api/set_io":
             key = str(req.get("key", ""))
             val = bool(req.get("value", False))

@@ -97,6 +97,9 @@ class CModelAGVSimulator(Node):
         self.last_cmd_time = time.time()
         self.last_time = time.time()
         self.dynamic_obstacles = []
+        self.lidar_beams = 360
+        self.lidar_freq = 10.0
+        self.lidar_range_max = 12.0
 
         # ROS 2 Pub / Sub
         self.cmd_sub = self.create_subscription(Twist, '/cmd_vel', self.cmd_vel_callback, 10)
@@ -104,6 +107,7 @@ class CModelAGVSimulator(Node):
         self.scenario_sub = self.create_subscription(String, '/set_map_scenario', self.map_scenario_callback, 10)
         self.io_cmd_sub = self.create_subscription(String, '/set_io', self.set_io_callback, 10)
         self.obstacle_sub = self.create_subscription(String, '/set_obstacles', self.obstacle_callback, 10)
+        self.lidar_config_sub = self.create_subscription(String, '/set_lidar_config', self.lidar_config_callback, 10)
 
         self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
         self.joint_pub = self.create_publisher(JointState, '/joint_states', 10)
@@ -184,6 +188,38 @@ class CModelAGVSimulator(Node):
                 self.get_logger().info(f'Received dynamic obstacles update: {len(self.dynamic_obstacles)} obstacles active')
         except Exception as e:
             self.get_logger().error(f'Error parsing set_obstacles: {e}')
+
+    def lidar_config_callback(self, msg: String):
+        try:
+            cfg = json.loads(msg.data)
+            if "beams" in cfg and cfg["beams"]:
+                self.lidar_beams = max(10, min(3600, int(cfg["beams"])))
+            elif "angle_resolution_deg" in cfg and cfg["angle_resolution_deg"]:
+                res_deg = float(cfg["angle_resolution_deg"])
+                if res_deg > 0:
+                    self.lidar_beams = max(10, min(3600, int(round(360.0 / res_deg))))
+            
+            if "range_max" in cfg and cfg["range_max"]:
+                self.lidar_range_max = max(1.0, min(50.0, float(cfg["range_max"])))
+
+            if "freq_hz" in cfg or "freq" in cfg:
+                new_freq = float(cfg.get("freq_hz", cfg.get("freq", self.lidar_freq)))
+                new_freq = max(1.0, min(50.0, new_freq))
+                if abs(new_freq - self.lidar_freq) > 0.01:
+                    self.lidar_freq = new_freq
+                    if hasattr(self, 'sensor_timer') and self.sensor_timer:
+                        self.sensor_timer.cancel()
+                        self.destroy_timer(self.sensor_timer)
+                    self.sensor_timer = self.create_timer(1.0 / self.lidar_freq, self.sensor_step)
+                    self.get_logger().info(f"LiDAR scan timer reset to {self.lidar_freq:.1f} Hz (period {1.0/self.lidar_freq:.4f}s)")
+
+            if self.use_pybullet and self.pybullet_engine:
+                self.pybullet_engine.lidar_scan_freq_hz = self.lidar_freq
+                self.pybullet_engine.lidar_beams = self.lidar_beams
+
+            self.get_logger().info(f"LiDAR config updated: {self.lidar_beams} beams ({360.0/self.lidar_beams:.2f}° res), {self.lidar_freq:.1f} Hz, max range {self.lidar_range_max:.1f}m")
+        except Exception as e:
+            self.get_logger().error(f"Error parsing /set_lidar_config: {e}")
 
     def cmd_vel_callback(self, msg: Twist):
         self.last_cmd_time = time.time()
@@ -346,11 +382,15 @@ class CModelAGVSimulator(Node):
         chassis = self.active_chassis
 
         # 1. 2D LiDAR Raycasting (Native PyBullet p.rayTestBatch or Analytical Fallback)
+        beams = getattr(self, "lidar_beams", 360)
+        freq = getattr(self, "lidar_freq", 10.0)
+        r_max = getattr(self, "lidar_range_max", 12.0)
+
         if self.use_pybullet and self.pybullet_engine:
-            ranges = self.pybullet_engine.raycast_lidar(num_beams=360, range_max=12.0)
+            ranges = self.pybullet_engine.raycast_lidar(num_beams=beams, range_max=r_max)
             angle_min = -math.pi
             angle_max = math.pi
-            angle_inc = (2.0 * math.pi) / 360
+            angle_inc = (2.0 * math.pi) / beams
         else:
             active_walls = list(self.walls)
             for obs in self.dynamic_obstacles:
@@ -377,9 +417,9 @@ class CModelAGVSimulator(Node):
         scan.angle_max = angle_max
         scan.angle_increment = angle_inc
         scan.time_increment = 0.0
-        scan.scan_time = 0.1
+        scan.scan_time = 1.0 / freq
         scan.range_min = 0.05
-        scan.range_max = 12.0
+        scan.range_max = r_max
         scan.ranges = ranges
         self.default_scan_pub.publish(scan)
 
