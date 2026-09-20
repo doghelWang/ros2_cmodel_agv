@@ -28,6 +28,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
 from models import DiffDriveChassis, SingleSteerChassis, DualSteerChassis
+from models import PyBulletAGVEngine, PYBULLET_AVAILABLE
 from sensors import LidarSimulator, VisionSimulator, IOSimulator
 from controllers import VelocityProfiler, MotorSimulator
 from planning.dijkstra_planner import SCENARIO_DEFINITIONS
@@ -69,6 +70,26 @@ class CModelAGVSimulator(Node):
         self.active_scenario = "grid_9_square"
         self.walls = list(SCENARIO_DEFINITIONS[self.active_scenario]["walls"])
 
+        # 3. Initialize PyBullet C++ Physics Engine
+        self.use_pybullet = False
+        self.pybullet_engine = None
+        urdf_path = os.path.join(os.path.dirname(__file__), "robot.urdf")
+        if PYBULLET_AVAILABLE and os.path.exists(urdf_path):
+            try:
+                self.pybullet_engine = PyBulletAGVEngine(
+                    urdf_path=urdf_path,
+                    wheel_radius=wheel_radius,
+                    track_width=track_width,
+                    time_step=0.02
+                )
+                self.pybullet_engine.set_scenario_walls(self.walls)
+                self.use_pybullet = True
+                self.get_logger().info('PyBullet C++ Physics Engine (Bullet 3 DIRECT) successfully initialized!')
+            except Exception as e:
+                self.get_logger().warn(f'Failed to initialize PyBullet, falling back to analytical model: {e}')
+        else:
+            self.get_logger().info('PyBullet not available, running analytical physics.')
+
         # Commanded Velocities & Watchdog
         self.cmd_vx = 0.0
         self.cmd_vy = 0.0
@@ -107,6 +128,8 @@ class CModelAGVSimulator(Node):
             self.active_chassis_name = target
             self.active_chassis = self.chassis_models[target]
             self.active_chassis.reset_pose(cur_x, cur_y, cur_th)
+            if self.use_pybullet and self.pybullet_engine:
+                self.pybullet_engine.reset_pose(cur_x, cur_y, cur_th)
             self.get_logger().info(f'Switched chassis type to: {self.active_chassis_name}')
 
     def map_scenario_callback(self, msg: String):
@@ -117,6 +140,9 @@ class CModelAGVSimulator(Node):
             self.walls = list(sc["walls"])
             origin = sc.get("origin", {"x": 0.0, "y": 0.0, "yaw": 0.0})
             self.active_chassis.reset_pose(origin["x"], origin["y"], origin.get("yaw", 0.0))
+            if self.use_pybullet and self.pybullet_engine:
+                self.pybullet_engine.set_scenario_walls(self.walls)
+                self.pybullet_engine.reset_pose(origin["x"], origin["y"], origin.get("yaw", 0.0))
             self.cmd_vx = 0.0
             self.cmd_vy = 0.0
             self.cmd_wz = 0.0
@@ -139,6 +165,21 @@ class CModelAGVSimulator(Node):
             data = json.loads(msg.data)
             if isinstance(data, list):
                 self.dynamic_obstacles = data
+                if self.use_pybullet and self.pybullet_engine:
+                    all_walls = list(self.walls)
+                    for obs in self.dynamic_obstacles:
+                        ox = float(obs.get("x", 0.0))
+                        oy = float(obs.get("y", 0.0))
+                        ow = float(obs.get("w", 0.8))
+                        oh = float(obs.get("h", 0.8))
+                        hw, hh = ow / 2.0, oh / 2.0
+                        all_walls.extend([
+                            (ox - hw, oy - hh, ox + hw, oy - hh),
+                            (ox + hw, oy - hh, ox + hw, oy + hh),
+                            (ox + hw, oy + hh, ox - hw, oy + hh),
+                            (ox - hw, oy + hh, ox - hw, oy - hh)
+                        ])
+                    self.pybullet_engine.set_scenario_walls(all_walls)
                 self.get_logger().info(f'Received dynamic obstacles update: {len(self.dynamic_obstacles)} obstacles active')
         except Exception as e:
             self.get_logger().error(f'Error parsing set_obstacles: {e}')
@@ -209,8 +250,20 @@ class CModelAGVSimulator(Node):
             cmd_vy = self.cmd_vy
             cmd_wz = self.cmd_wz
 
-        # 2. Update Chassis Physics
-        state = self.active_chassis.update_physics(cmd_vx, cmd_vy, cmd_wz, dt)
+        # 2. Update Chassis Physics (PyBullet C++ Engine or Analytical Fallback)
+        if self.use_pybullet and self.pybullet_engine and self.active_chassis_name == "diff_drive":
+            self.pybullet_engine.apply_motor_control(cmd_vx, cmd_vy, cmd_wz)
+            self.pybullet_engine.step_physics()
+            state = self.pybullet_engine.get_robot_state()
+            self.active_chassis.x = state["x"]
+            self.active_chassis.y = state["y"]
+            self.active_chassis.theta = state["theta"]
+            self.active_chassis.vx = state["vx"]
+            self.active_chassis.vy = state["vy"]
+            self.active_chassis.wz = state["wz"]
+        else:
+            state = self.active_chassis.update_physics(cmd_vx, cmd_vy, cmd_wz, dt)
+
         self.io_sim.update_lift_physics(dt)
 
         # Physical boundary safety constraint adapted to scenario perimeter
@@ -226,9 +279,14 @@ class CModelAGVSimulator(Node):
         if abs(self.active_chassis.x) > max_bx:
             self.active_chassis.x = math.copysign(max_bx, self.active_chassis.x)
             self.active_chassis.vx = 0.0
+            if self.use_pybullet and self.pybullet_engine:
+                self.pybullet_engine.reset_pose(self.active_chassis.x, self.active_chassis.y, self.active_chassis.theta)
         if abs(self.active_chassis.y) > max_by:
             self.active_chassis.y = math.copysign(max_by, self.active_chassis.y)
             self.active_chassis.vy = 0.0
+            if self.use_pybullet and self.pybullet_engine:
+                self.pybullet_engine.reset_pose(self.active_chassis.x, self.active_chassis.y, self.active_chassis.theta)
+
         state["x"] = self.active_chassis.x
         state["y"] = self.active_chassis.y
 
@@ -272,6 +330,8 @@ class CModelAGVSimulator(Node):
         if self.active_chassis_name == "diff_drive":
             js.name = ['left_wheel_joint', 'right_wheel_joint']
             js.position = [state.get("left_wheel_rad", 0.0), state.get("right_wheel_rad", 0.0)]
+            js.velocity = [state.get("left_wheel_speed", 0.0), state.get("right_wheel_speed", 0.0)]
+            js.effort = [state.get("left_motor_torque", 0.0), state.get("right_motor_torque", 0.0)]
         elif self.active_chassis_name == "single_steer":
             js.name = ['steer_joint', 'drive_wheel_joint']
             js.position = [math.radians(state.get("steer_angle_deg", 0.0)), self.active_chassis.drive_wheel_rad]
@@ -284,32 +344,41 @@ class CModelAGVSimulator(Node):
         now = self.get_clock().now().to_msg()
         chassis = self.active_chassis
 
-        # 1. 2D LiDAR Raycasting against walls and dynamic obstacles
-        active_walls = list(self.walls)
-        for obs in self.dynamic_obstacles:
-            ox = float(obs.get("x", 0.0))
-            oy = float(obs.get("y", 0.0))
-            ow = float(obs.get("w", 0.8))
-            oh = float(obs.get("h", 0.8))
-            hw, hh = ow / 2.0, oh / 2.0
-            active_walls.extend([
-                (ox - hw, oy - hh, ox + hw, oy - hh),
-                (ox + hw, oy - hh, ox + hw, oy + hh),
-                (ox + hw, oy + hh, ox - hw, oy + hh),
-                (ox - hw, oy + hh, ox - hw, oy - hh)
-            ])
+        # 1. 2D LiDAR Raycasting (Native PyBullet p.rayTestBatch or Analytical Fallback)
+        if self.use_pybullet and self.pybullet_engine:
+            ranges = self.pybullet_engine.raycast_lidar(num_beams=360, range_max=12.0)
+            angle_min = -math.pi
+            angle_max = math.pi
+            angle_inc = (2.0 * math.pi) / 360
+        else:
+            active_walls = list(self.walls)
+            for obs in self.dynamic_obstacles:
+                ox = float(obs.get("x", 0.0))
+                oy = float(obs.get("y", 0.0))
+                ow = float(obs.get("w", 0.8))
+                oh = float(obs.get("h", 0.8))
+                hw, hh = ow / 2.0, oh / 2.0
+                active_walls.extend([
+                    (ox - hw, oy - hh, ox + hw, oy - hh),
+                    (ox + hw, oy - hh, ox + hw, oy + hh),
+                    (ox + hw, oy + hh, ox - hw, oy + hh),
+                    (ox - hw, oy + hh, ox - hw, oy - hh)
+                ])
+            ranges = self.lidar_sim.cast_rays(chassis.x, chassis.y, chassis.theta, active_walls)
+            angle_min = self.lidar_sim.angle_min
+            angle_max = self.lidar_sim.angle_max
+            angle_inc = self.lidar_sim.angle_inc
 
-        ranges = self.lidar_sim.cast_rays(chassis.x, chassis.y, chassis.theta, active_walls)
         scan = LaserScan()
         scan.header.stamp = now
         scan.header.frame_id = 'laser_link'
-        scan.angle_min = self.lidar_sim.angle_min
-        scan.angle_max = self.lidar_sim.angle_max
-        scan.angle_increment = self.lidar_sim.angle_inc
+        scan.angle_min = angle_min
+        scan.angle_max = angle_max
+        scan.angle_increment = angle_inc
         scan.time_increment = 0.0
         scan.scan_time = 0.1
-        scan.range_min = self.lidar_sim.range_min
-        scan.range_max = self.lidar_sim.range_max
+        scan.range_min = 0.05
+        scan.range_max = 12.0
         scan.ranges = ranges
         self.default_scan_pub.publish(scan)
 

@@ -159,7 +159,7 @@ class SystemPerformanceMonitor:
 
     def _find_processes(self):
         targets = {
-            "agv_simulation": {"name": "仿真动力学与激光雷达 (CModel Sim)", "match": "agv_simulation.py", "role": "底盘动力学、轮系电机闭环、激光雷达光线投射模拟"},
+            "agv_simulation": {"name": "PyBullet 物理与激光仿真 (Bullet 3 C++)", "match": "agv_simulation.py", "role": "PyBullet 刚体动力学、电机扭矩闭环、批量光线投射点云"},
             "web_teleop": {"name": "Web 调度网桥与拓扑规划 (Teleop Server)", "match": "web_teleop_server.py", "role": "Web 交互接口、REST 事件总线、Dijkstra 拓扑规划"},
             "map_server": {"name": "Nav2 栅格地图服务器 (map_server)", "match": "nav2_map_server/map_server", "role": "ROS2 占据栅格地图发布与代价地图广播"},
             "lifecycle_manager": {"name": "Nav2 生命周期管理 (lifecycle_manager)", "match": "nav2_lifecycle_manager/lifecycle_manager", "role": "ROS2 节点健康监控与生命周期状态切换"},
