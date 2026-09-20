@@ -52,10 +52,21 @@ async function main() {
     console.log(`   * [PID ${p.pid}] ${p.name} | CPU: ${p.cpu_percent}% | RSS: ${p.memory_mb}MB | Role: ${p.role}`);
   }
 
-  // Take screenshot of Performance Monitor Modal
+  // Take screenshot of Performance Monitor Modal (Top overview)
   const perfShotPath = path.join(ARTIFACT_DIR, 'pybullet_perf_monitor.png');
   await page.screenshot({ path: perfShotPath });
   console.log(`\n📸 Saved performance monitor snapshot to: ${perfShotPath}`);
+
+  // Scroll down to capture the Bullet Data Volume vs Performance Benchmark Dashboard
+  await page.evaluate(() => {
+    const dialogBody = document.querySelector('.perf-dialog-body');
+    if (dialogBody) dialogBody.scrollTop = 500;
+  });
+  await page.waitForTimeout(1000);
+
+  const benchShotPath = path.join(ARTIFACT_DIR, 'pybullet_benchmark_table.png');
+  await page.screenshot({ path: benchShotPath });
+  console.log(`📸 Saved bullet benchmark table snapshot to: ${benchShotPath}`);
 
   // 5. Trigger Navigation and Capture Motion
   console.log(`\n5. Dispatching Navigation Target [3.0, 3.0] under PyBullet motor control ...`);

@@ -110,6 +110,7 @@ class CModelAGVSimulator(Node):
         self.default_scan_pub = self.create_publisher(LaserScan, '/scan', 10)
         self.io_state_pub = self.create_publisher(String, '/io_states', 10)
         self.vision_pub = self.create_publisher(String, '/vision_markers', 10)
+        self.bullet_metrics_pub = self.create_publisher(String, '/bullet_metrics', 10)
 
         self.tf_broadcaster = TransformBroadcaster(self)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
@@ -393,6 +394,13 @@ class CModelAGVSimulator(Node):
         io_msg = String()
         io_msg.data = json.dumps(io_state)
         self.io_state_pub.publish(io_msg)
+
+        # 4. PyBullet Simulation Data Volume & Performance Metrics
+        if self.use_pybullet and self.pybullet_engine:
+            bm = self.pybullet_engine.get_bullet_metrics()
+            bm_msg = String()
+            bm_msg.data = json.dumps(bm)
+            self.bullet_metrics_pub.publish(bm_msg)
 
     @staticmethod
     def euler_to_quaternion(roll: float, pitch: float, yaw: float):

@@ -312,11 +312,16 @@ class SystemPerformanceMonitor:
 
             time.sleep(1.0)
 
+    def set_bullet_metrics(self, metrics: dict):
+        with self.lock:
+            self.latest_stats["bullet_simulation"] = metrics
+
     def get_stats(self):
         with self.lock:
             data = dict(self.latest_stats)
             data["history"] = list(self.history)
             return data
+
 
 
 perf_monitor = SystemPerformanceMonitor()
@@ -592,6 +597,7 @@ class WebTeleopBridge(Node):
         self.io_sub = self.create_subscription(String, '/io_states', self.on_io_states, 10)
         self.vision_sub = self.create_subscription(String, '/vision_markers', self.on_vision_markers, 10)
         self.joint_sub = self.create_subscription(JointState, '/joint_states', self.on_joint_states, 10)
+        self.bullet_metrics_sub = self.create_subscription(String, '/bullet_metrics', self.on_bullet_metrics, 10)
 
         # Dynamic Obstacles
         self.dynamic_obstacles = []
@@ -831,6 +837,16 @@ class WebTeleopBridge(Node):
             data = json.loads(msg.data)
             with self.lock:
                 self.telemetry["vision_markers"] = data
+        except Exception:
+            pass
+
+    def on_bullet_metrics(self, msg: String):
+        try:
+            data = json.loads(msg.data)
+            with self.lock:
+                self.telemetry["bullet_metrics"] = data
+            if perf_monitor:
+                perf_monitor.set_bullet_metrics(data)
         except Exception:
             pass
 
@@ -1362,6 +1378,15 @@ class TeleopHTTPHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             data = perf_monitor.get_stats()
             self.wfile.write(json.dumps(data).encode("utf-8"))
+        elif parsed.path == "/api/bullet_metrics":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-cache, no-store")
+            self.end_headers()
+            with bridge_node.lock:
+                bm = bridge_node.telemetry.get("bullet_metrics") or (perf_monitor.latest_stats.get("bullet_simulation") if perf_monitor else {})
+            self.wfile.write(json.dumps(bm or {}).encode("utf-8"))
         elif parsed.path == "/api/replay/sessions":
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")

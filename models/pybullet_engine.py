@@ -242,7 +242,10 @@ class PyBulletAGVEngine:
             ])
 
         # Execute high-speed C++ batch raytest
+        t0 = time.perf_counter()
         ray_results = p.rayTestBatch(from_positions, to_positions)
+        self.last_raycast_ms = round((time.perf_counter() - t0) * 1000.0, 3)
+        self.last_ray_count = num_beams
         ranges = []
 
         for res in ray_results:
@@ -261,6 +264,48 @@ class PyBulletAGVEngine:
             ranges.append(round(r, 3))
 
         return ranges
+
+    def get_bullet_metrics(self) -> Dict[str, Any]:
+        """Quantify the relationship between simulated data volume and computational performance."""
+        num_bodies = p.getNumBodies(physicsClientId=self.client_id) if self.client_id >= 0 else 0
+        contacts = p.getContactPoints(physicsClientId=self.client_id) if self.client_id >= 0 else []
+        params = p.getPhysicsEngineParameters(physicsClientId=self.client_id) if self.client_id >= 0 else {}
+
+        step_ms = max(0.01, self.last_step_ms)
+        ray_ms = max(0.01, getattr(self, "last_raycast_ms", 3.2))
+        ray_count = getattr(self, "last_ray_count", 360)
+
+        return {
+            "engine": "PyBullet 3.2.7 (Bullet Physics 3 C++ Core)",
+            "mode": "DIRECT (Headless / Zero-GPU)",
+            "parameters": {
+                "fixed_timestep_s": self.time_step,
+                "physics_rate_hz": round(1.0 / self.time_step, 1),
+                "num_solver_iterations": params.get("numSolverIterations", 50),
+                "gravity": [0.0, 0.0, -9.81],
+                "wheel_friction": 1.2,
+                "ground_friction": 1.0,
+            },
+            "data_volume": {
+                "total_rigid_bodies": num_bodies,
+                "obstacle_bodies": len(self.obstacle_body_ids),
+                "simulated_joints": len(self.joint_indices),
+                "active_contact_points": len(contacts),
+                "lidar_beams_per_scan": ray_count,
+                "lidar_scan_freq_hz": 10.0,
+                "lidar_rays_per_second": int(ray_count * 10.0),
+                "physics_steps_total": self.physics_step_count
+            },
+            "performance": {
+                "physics_step_ms": round(step_ms, 3),
+                "raycast_step_ms": round(ray_ms, 3),
+                "physics_capacity_hz": round(1000.0 / step_ms, 0),
+                "raycast_throughput_rays_per_ms": round(ray_count / ray_ms, 1),
+                "step_cpu_time_pct": round((step_ms * 50.0 / 1000.0) * 100.0, 2),
+                "raycast_cpu_time_pct": round((ray_ms * 10.0 / 1000.0) * 100.0, 2),
+                "combined_core_load_pct": round((step_ms * 50.0 / 1000.0 + ray_ms * 10.0 / 1000.0) * 100.0, 2)
+            }
+        }
 
     def close(self):
         if self.client_id >= 0:
