@@ -1874,13 +1874,14 @@
           <span style="font-size:16px;">⚡</span>
           <span>树莓派硬件与 ROS/仿真后台实时性能耗用监控</span>
           <span class="badge" style="background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.4); font-weight:600;">引擎: PyBullet (Bullet 3 C++)</span>
-          <span class="badge online" id="perf-status-pill">● 采样正常 (1Hz)</span>
+          <span class="badge online" id="perf-status-pill">● 采样正常 (10Hz)</span>
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
           <select id="perf-interval-select" onchange="changePerfInterval(this.value)" style="background:#21262d; border:1px solid #30363d; color:#c9d1d9; padding:3px 8px; border-radius:4px; font-size:11px;">
-            <option value="1000">1秒刷新</option>
-            <option value="500">0.5秒高频</option>
-            <option value="2000">2秒节流</option>
+            <option value="100" selected>0.1秒极速 (10Hz)</option>
+            <option value="500">0.5秒高频 (2Hz)</option>
+            <option value="1000">1秒标准 (1Hz)</option>
+            <option value="2000">2秒节流 (0.5Hz)</option>
           </select>
           <button class="icon-btn" onclick="togglePerfDock()" title="切换靠底停靠 / 自由悬浮窗" id="btn-perf-dock-toggle">🗗 自由悬浮</button>
           <button class="icon-btn" onclick="togglePerfMinimize()" title="最小化/展开窗口" id="btn-perf-min-toggle">🗕 最小化</button>
@@ -3979,7 +3980,7 @@
     // ============================================================
     let perfModalVisible = false;
     let isPerfFullscreen = false;
-    let perfIntervalMs = 1000;
+    let perfIntervalMs = 100;
     let perfTimer = null;
     let isFetchingPerf = false;
     let perfData = null;
@@ -4332,9 +4333,9 @@
         return;
       }
 
-      const totalSlots = 60; // 60 seconds buffer
+      const totalSlots = Math.max(60, history.length); // Dynamic slots up to 300 (30s at 10Hz)
       const count = history.length;
-      const stepX = plotW / (totalSlots - 1);
+      const stepX = plotW / Math.max(1, totalSlots - 1);
       const startSlot = totalSlots - count;
 
       // Helper to draw a curve

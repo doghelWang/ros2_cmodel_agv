@@ -124,7 +124,7 @@ class SystemPerformanceMonitor:
         * nav2_lifecycle_manager (ROS2 lifecycle manager)
     - 60-second sliding performance timeline
     """
-    def __init__(self, history_len=60):
+    def __init__(self, history_len=300):
         self.history_len = history_len
         self.history = []
         self.lock = threading.Lock()
@@ -302,6 +302,8 @@ class SystemPerformanceMonitor:
                 }
 
                 with self.lock:
+                    if "bullet_simulation" in self.latest_stats:
+                        snapshot["bullet_simulation"] = self.latest_stats["bullet_simulation"]
                     self.latest_stats = snapshot
                     self.history.append(point)
                     if len(self.history) > self.history_len:
@@ -310,7 +312,7 @@ class SystemPerformanceMonitor:
             except Exception:
                 pass
 
-            time.sleep(1.0)
+            time.sleep(0.1)
 
     def set_bullet_metrics(self, metrics: dict):
         with self.lock:
