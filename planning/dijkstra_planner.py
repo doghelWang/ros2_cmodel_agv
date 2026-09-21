@@ -315,8 +315,9 @@ class DijkstraPlanner:
             "id": sc["id"],
             "name": sc["name"],
             "description": sc["description"],
-            "shelves": sc["shelves"],
-            "stations": sc["stations"],
+            "walls": sc.get("walls", []),
+            "shelves": sc.get("shelves", []),
+            "stations": sc.get("stations", []),
             "origin": sc["origin"],
             "bounds": {
                 "min_x": min_x,
