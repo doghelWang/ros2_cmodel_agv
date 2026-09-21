@@ -593,6 +593,8 @@ class WebTeleopBridge(Node):
         self.io_cmd_pub = self.create_publisher(String, '/set_io', 10)
         self.obstacle_pub = self.create_publisher(String, '/set_obstacles', 10)
         self.lidar_config_pub = self.create_publisher(String, '/set_lidar_config', 10)
+        self.pause_pub = self.create_publisher(String, '/set_sim_pause', 10)
+        self.is_paused = False
 
         self.odom_sub = self.create_subscription(Odometry, '/odom', self.on_odom, 10)
         self.scan_sub = self.create_subscription(LaserScan, '/scan', self.on_scan, 10)
@@ -647,6 +649,7 @@ class WebTeleopBridge(Node):
             "target_goal": None,
             "nav_status": "IDLE",
             "nav_dist_rem": 0.0,
+            "is_paused": False,
             "dynamic_obstacles": [],
             "topo_graph": self.dijkstra_planner.get_topology(),
             "vision_markers": [],
@@ -1091,6 +1094,39 @@ class WebTeleopBridge(Node):
             {"count": len(new_obs), "obstacles": new_obs}
         )
 
+    def set_simulation_pause(self, paused: bool):
+        with self.lock:
+            self.is_paused = paused
+            self.telemetry["is_paused"] = self.is_paused
+        msg = String()
+        msg.data = json.dumps({"paused": paused})
+        self.pause_pub.publish(msg)
+        action_name = "暂停" if paused else "恢复"
+        self.get_logger().info(f"Simulation {action_name}")
+        self.event_hub.emit(
+            "system", "SIM_STATE_CHANGE", "info",
+            f"仿真环境已{action_name}",
+            f"操作员已{action_name}仿真时钟与物理步进",
+            {"paused": paused}
+        )
+
+    def reset_simulation(self):
+        self.cancel_nav()
+        with self.lock:
+            sc = SCENARIO_DEFINITIONS.get(self.active_scenario, {})
+            orig = sc.get("origin", {"x": 0.0, "y": 0.0, "yaw": 0.0})
+        self.clear_obstacles()
+        msg = String()
+        msg.data = self.active_scenario
+        self.scenario_pub.publish(msg)
+        self.set_simulation_pause(False)
+        self.event_hub.emit(
+            "system", "SIM_RESET", "warning",
+            "仿真环境已重置",
+            "已将车辆位姿重置至初始原点并重置仿真状态",
+            {"origin": orig}
+        )
+
     def send_nav_goal(self, x: float, y: float, yaw: float = 0.0):
         with self.lock:
             self.current_mission_id += 1
@@ -1212,7 +1248,7 @@ class WebTeleopBridge(Node):
                         with self.lock:
                             if self.current_mission_id != mission_id:
                                 return
-                            if self.telemetry.get("io_states", {}).get("is_emergency_stop", False):
+                            if self.is_paused or self.telemetry.get("io_states", {}).get("is_emergency_stop", False):
                                 self.publish_cmd_vel(0.0, 0.0, 0.0)
                                 time.sleep(0.04)
                                 continue
@@ -1233,7 +1269,7 @@ class WebTeleopBridge(Node):
                     with self.lock:
                         if self.current_mission_id != mission_id:
                             return
-                        if self.telemetry.get("io_states", {}).get("is_emergency_stop", False):
+                        if self.is_paused or self.telemetry.get("io_states", {}).get("is_emergency_stop", False):
                             self.publish_cmd_vel(0.0, 0.0, 0.0)
                             time.sleep(0.04)
                             continue
@@ -1381,6 +1417,37 @@ class TeleopHTTPHandler(SimpleHTTPRequestHandler):
             html_path = os.path.join(os.path.dirname(__file__), "index.html")
             with open(html_path, "rb") as f:
                 self.wfile.write(f.read())
+        elif parsed.path.startswith("/vendor/"):
+            rel_path = parsed.path.lstrip("/")
+            file_path = os.path.join(os.path.dirname(__file__), rel_path)
+            if os.path.isfile(file_path):
+                self.send_response(200)
+                if file_path.endswith(".css"):
+                    self.send_header("Content-Type", "text/css; charset=utf-8")
+                elif file_path.endswith(".js"):
+                    self.send_header("Content-Type", "application/javascript; charset=utf-8")
+                else:
+                    self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Cache-Control", "public, max-age=86400")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                with open(file_path, "rb") as f:
+                    self.wfile.write(f.read())
+            else:
+                self.send_response(404)
+                self.end_headers()
+        elif parsed.path == "/annotator.js":
+            file_path = os.path.join(os.path.dirname(__file__), "annotator.js")
+            if os.path.isfile(file_path):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/javascript; charset=utf-8")
+                self.send_header("Cache-Control", "no-cache, no-store")
+                self.end_headers()
+                with open(file_path, "rb") as f:
+                    self.wfile.write(f.read())
+            else:
+                self.send_response(404)
+                self.end_headers()
         elif parsed.path == "/api/telemetry":
             query = urllib.parse.parse_qs(parsed.query)
             want_full = query.get("full", ["0"])[0] in ("1", "true")
@@ -1524,6 +1591,19 @@ class TeleopHTTPHandler(SimpleHTTPRequestHandler):
         elif parsed.path == "/api/cancel_navigation":
             if bridge_node:
                 bridge_node.cancel_nav()
+        elif parsed.path == "/api/sim_pause":
+            paused = bool(req.get("paused", True))
+            if bridge_node:
+                bridge_node.set_simulation_pause(paused)
+            res = {"status": "ok", "paused": paused}
+        elif parsed.path == "/api/sim_resume":
+            if bridge_node:
+                bridge_node.set_simulation_pause(False)
+            res = {"status": "ok", "paused": False}
+        elif parsed.path == "/api/sim_reset":
+            if bridge_node:
+                bridge_node.reset_simulation()
+            res = {"status": "ok", "reset": True}
         elif parsed.path == "/api/chassis_type":
             ctype = str(req.get("type", "diff_drive"))
             if bridge_node:

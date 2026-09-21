@@ -17,3 +17,4 @@ venv/
 # Node / Playwright test artifacts
 node_modules/
 test-results/
+scratch/

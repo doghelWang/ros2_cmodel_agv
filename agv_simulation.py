@@ -100,6 +100,7 @@ class CModelAGVSimulator(Node):
         self.lidar_beams = 360
         self.lidar_freq = 10.0
         self.lidar_range_max = 12.0
+        self.is_paused = False
 
         # ROS 2 Pub / Sub
         self.cmd_sub = self.create_subscription(Twist, '/cmd_vel', self.cmd_vel_callback, 10)
@@ -108,6 +109,7 @@ class CModelAGVSimulator(Node):
         self.io_cmd_sub = self.create_subscription(String, '/set_io', self.set_io_callback, 10)
         self.obstacle_sub = self.create_subscription(String, '/set_obstacles', self.obstacle_callback, 10)
         self.lidar_config_sub = self.create_subscription(String, '/set_lidar_config', self.lidar_config_callback, 10)
+        self.pause_sub = self.create_subscription(String, '/set_sim_pause', self.pause_callback, 10)
 
         self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
         self.joint_pub = self.create_publisher(JointState, '/joint_states', 10)
@@ -221,6 +223,18 @@ class CModelAGVSimulator(Node):
         except Exception as e:
             self.get_logger().error(f"Error parsing /set_lidar_config: {e}")
 
+    def pause_callback(self, msg: String):
+        try:
+            val = msg.data.strip().lower()
+            if "{" in val:
+                req = json.loads(msg.data)
+                self.is_paused = bool(req.get("paused", False))
+            else:
+                self.is_paused = val in ("1", "true", "pause", "paused")
+            self.get_logger().info(f"Simulation pause state updated: {self.is_paused}")
+        except Exception as e:
+            self.get_logger().error(f"Error parsing /set_sim_pause: {e}")
+
     def cmd_vel_callback(self, msg: Twist):
         self.last_cmd_time = time.time()
         self.cmd_vx = msg.linear.x
@@ -277,7 +291,9 @@ class CModelAGVSimulator(Node):
 
         # 1. Industrial Watchdog & E-Stop Interlock Check
         io_state = self.io_sim.get_io_state()
-        if io_state["is_emergency_stop"] or (current_time - self.last_cmd_time > 1.2):
+        if self.is_paused:
+            cmd_vx, cmd_vy, cmd_wz = 0.0, 0.0, 0.0
+        elif io_state["is_emergency_stop"] or (current_time - self.last_cmd_time > 1.2):
             # Safe Stop
             cmd_vx = 0.0
             cmd_vy = 0.0
@@ -288,7 +304,16 @@ class CModelAGVSimulator(Node):
             cmd_wz = self.cmd_wz
 
         # 2. Update Chassis Physics (PyBullet C++ Engine or Analytical Fallback)
-        if self.use_pybullet and self.pybullet_engine and self.active_chassis_name == "diff_drive":
+        if self.is_paused:
+            if self.use_pybullet and self.pybullet_engine and self.active_chassis_name == "diff_drive":
+                self.pybullet_engine.apply_motor_control(0.0, 0.0, 0.0)
+                state = self.pybullet_engine.get_robot_state()
+            else:
+                state = {"x": self.active_chassis.x, "y": self.active_chassis.y, "theta": self.active_chassis.theta, "vx": 0.0, "vy": 0.0, "wz": 0.0}
+            self.active_chassis.vx = 0.0
+            self.active_chassis.vy = 0.0
+            self.active_chassis.wz = 0.0
+        elif self.use_pybullet and self.pybullet_engine and self.active_chassis_name == "diff_drive":
             self.pybullet_engine.apply_motor_control(cmd_vx, cmd_vy, cmd_wz)
             self.pybullet_engine.step_physics()
             state = self.pybullet_engine.get_robot_state()
@@ -301,7 +326,8 @@ class CModelAGVSimulator(Node):
         else:
             state = self.active_chassis.update_physics(cmd_vx, cmd_vy, cmd_wz, dt)
 
-        self.io_sim.update_lift_physics(dt)
+        if not self.is_paused:
+            self.io_sim.update_lift_physics(dt)
 
         # Physical boundary safety constraint adapted to scenario perimeter
         max_bx = 6.8
