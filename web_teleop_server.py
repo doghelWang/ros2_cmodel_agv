@@ -842,10 +842,12 @@ class WebTeleopBridge(Node):
             raw = list(msg.ranges)
             # Adaptively stream points: for <= 720 points, stream 1:1; for larger (e.g. 1080/1440), step = len(raw)//720
             step = 1 if len(raw) <= 720 else max(1, len(raw) // 720)
+            range_max = float(msg.range_max) if msg.range_max > 0 else 12.0
             valid_ranges = [r for r in raw if not (math.isinf(r) or math.isnan(r))]
-            min_dist = min(valid_ranges) if valid_ranges else 12.0
+            min_dist = min(valid_ranges) if valid_ranges else range_max
+            self.telemetry["scan_range_max"] = round(range_max, 2)
             self.telemetry["scan_ranges"] = [
-                round(float(12.0 if (math.isinf(r) or math.isnan(r)) else r), 2)
+                round(float(range_max if (math.isinf(r) or math.isnan(r) or r >= range_max) else r), 2)
                 for r in raw[::step]
             ]
             self.telemetry["scan_angle_min"] = float(msg.angle_min)

@@ -238,6 +238,12 @@ HTML_CONTENT = """<!DOCTYPE html>
         </button>
       </div>
 
+      <!-- 激光雷达点云图例 (实体轮廓 vs 开阔空扫) -->
+      <div id="laser-legend-pill" class="absolute top-12 right-3 flex items-center gap-2.5 bg-white/95 backdrop-blur border border-slate-200 rounded-md px-2 py-0.5 shadow-xs z-10 text-[10px] text-slate-600 font-medium">
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>实体轮廓命中</span>
+        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-slate-400 inline-block"></span>开阔空扫极值</span>
+      </div>
+
       <!-- 规划路径信息卡片 (右下角悬浮，有活动路径时展示) -->
       <div id="path-info-card" class="absolute bottom-3 right-3 bg-white/95 backdrop-blur border border-blue-200 rounded-xl p-2.5 shadow-md z-10 hidden min-w-[250px] text-xs transition-all">
         <div class="flex items-center justify-between pb-1.5 border-b border-slate-100 mb-1.5">
@@ -1208,7 +1214,16 @@ HTML_CONTENT = """<!DOCTYPE html>
 
       const pts = (data.scan_ranges && data.scan_ranges.length) ? data.scan_ranges.length : (data.lidar_config ? data.lidar_config.beams : 720);
       const lFreq = (data.lidar_config && data.lidar_config.freq_hz) ? data.lidar_config.freq_hz.toFixed(1) : currentTelemetryHz;
-      if (hudLaser) hudLaser.textContent = `${pts} pts (${lFreq} Hz)`;
+      let hitSummary = '';
+      if (data.scan_ranges && data.scan_ranges.length > 0) {
+        const maxR = (data.lidar_config && data.lidar_config.range_max) || data.scan_range_max || 12.0;
+        let hits = 0;
+        for (let i = 0; i < data.scan_ranges.length; i++) {
+          if (data.scan_ranges[i] < maxR - 0.15) hits++;
+        }
+        hitSummary = ` (实扫:${hits} / 空扫:${data.scan_ranges.length - hits})`;
+      }
+      if (hudLaser) hudLaser.textContent = `${pts} pts (${lFreq} Hz)${hitSummary}`;
 
       const minDist = data.scan_min_dist !== undefined ? data.scan_min_dist : 12.0;
       if (hudObstacle) {
@@ -2655,22 +2670,25 @@ HTML_CONTENT = """<!DOCTYPE html>
         const angleMin = telemetry.scan_angle_min !== undefined ? telemetry.scan_angle_min : -Math.PI;
         const angleInc = telemetry.scan_angle_inc !== undefined ? telemetry.scan_angle_inc : (Math.PI * 2 / ranges.length);
         const robotS = toScreen(scanPose.x, scanPose.y);
+        const maxRange = (telemetry.lidar_config && telemetry.lidar_config.range_max) || telemetry.scan_range_max || 12.0;
+        const outOfRangeThreshold = maxRange - 0.15;
 
         const hitPoints = [];
         for (let i = 0; i < ranges.length; i++) {
           const r = ranges[i];
-          if (r > 0.05 && r <= 15.0) {
+          if (r > 0.05 && r <= maxRange + 1.0) {
             const beamAngle = scanPose.yaw + angleMin + i * angleInc;
             const hx = scanPose.x + Math.cos(beamAngle) * r;
             const hy = scanPose.y + Math.sin(beamAngle) * r;
             const hs = toScreen(hx, hy);
-            hitPoints.push({ sx: hs.sx, sy: hs.sy, dist: r });
+            const isHit = (r < outOfRangeThreshold);
+            hitPoints.push({ sx: hs.sx, sy: hs.sy, dist: r, isHit: isHit });
           }
         }
 
         if (hitPoints.length > 2) {
           // 5.1 激光扫描覆盖扇区多边形 (Soft Green Coverage Wash)
-          ctx2D.fillStyle = 'rgba(16, 185, 129, 0.07)';
+          ctx2D.fillStyle = 'rgba(16, 185, 129, 0.05)';
           ctx2D.beginPath();
           ctx2D.moveTo(robotS.sx, robotS.sy);
           hitPoints.forEach(hp => {
@@ -2679,38 +2697,64 @@ HTML_CONTENT = """<!DOCTYPE html>
           ctx2D.closePath();
           ctx2D.fill();
 
-          // 5.2 激光边缘轮廓线 (Perimeter Contour Polyline with Safety Color Coding)
+          // 5.2 激光边缘轮廓线 (严格区分实际扫到轮廓 vs 超出范围空扫边界)
           for (let i = 0; i < hitPoints.length - 1; i++) {
             const pA = hitPoints[i];
             const pB = hitPoints[i + 1];
-            // 若相邻两点距离合理，绘制轮廓线段
             const segDist = Math.hypot(pA.sx - pB.sx, pA.sy - pB.sy);
-            if (segDist < 3.0 * view2D.scale) {
-              const minDist = Math.min(pA.dist, pB.dist);
-              if (minDist < 0.8) {
-                ctx2D.strokeStyle = '#ef4444'; // 极近停机区：红色
-                ctx2D.lineWidth = 3 * dpr;
-              } else if (minDist < 1.4) {
-                ctx2D.strokeStyle = '#f59e0b'; // 减速预警区：橙色
-                ctx2D.lineWidth = 2.4 * dpr;
-              } else {
-                ctx2D.strokeStyle = '#10b981'; // 安全通行区：绿色
-                ctx2D.lineWidth = 1.6 * dpr;
+
+            // 若两点均为实际扫到轮廓 (Real Obstacle Surface)
+            if (pA.isHit && pB.isHit) {
+              if (segDist < 3.0 * view2D.scale) {
+                const minDist = Math.min(pA.dist, pB.dist);
+                if (minDist < 0.8) {
+                  ctx2D.strokeStyle = '#ef4444'; // 极近停机区：红色实线
+                  ctx2D.lineWidth = 3 * dpr;
+                } else if (minDist < 1.4) {
+                  ctx2D.strokeStyle = '#f59e0b'; // 减速预警区：橙色实线
+                  ctx2D.lineWidth = 2.4 * dpr;
+                } else {
+                  ctx2D.strokeStyle = '#10b981'; // 实际扫到轮廓：翠绿高亮实线
+                  ctx2D.lineWidth = 2.0 * dpr;
+                }
+                ctx2D.setLineDash([]);
+                ctx2D.beginPath();
+                ctx2D.moveTo(pA.sx, pA.sy);
+                ctx2D.lineTo(pB.sx, pB.sy);
+                ctx2D.stroke();
               }
-              ctx2D.beginPath();
-              ctx2D.moveTo(pA.sx, pA.sy);
-              ctx2D.lineTo(pB.sx, pB.sy);
-              ctx2D.stroke();
+            } else if (!pA.isHit && !pB.isHit) {
+              // 若两点均为超出激光扫描范围的开阔空扫 (Empty Space / Range Max Boundary)
+              if (segDist < 3.5 * view2D.scale) {
+                ctx2D.strokeStyle = 'rgba(148, 163, 184, 0.4)'; // 浅青灰色细虚线
+                ctx2D.lineWidth = 1.0 * dpr;
+                ctx2D.setLineDash([3 * dpr, 3 * dpr]);
+                ctx2D.beginPath();
+                ctx2D.moveTo(pA.sx, pA.sy);
+                ctx2D.lineTo(pB.sx, pB.sy);
+                ctx2D.stroke();
+                ctx2D.setLineDash([]);
+              }
             }
+            // 若一实一虚（实体墙体与通道开阔处交界），不画连线，通道保持通透无阻
           }
 
-          // 5.3 激光击中点 (Laser Hit Dots)
+          // 5.3 激光击中点云 (实体命中点 vs 空扫点颜色与尺寸区分)
           hitPoints.forEach((hp, idx) => {
             if (idx % 2 === 0) { // 适度降噪采样展示
-              ctx2D.fillStyle = hp.dist < 0.8 ? '#ef4444' : (hp.dist < 1.4 ? '#f59e0b' : '#10b981');
-              ctx2D.beginPath();
-              ctx2D.arc(hp.sx, hp.sy, 2.2 * dpr, 0, Math.PI * 2);
-              ctx2D.fill();
+              if (hp.isHit) {
+                // 【实际扫到轮廓的点云】：实心高亮饱满大点 (绿/橙/红)
+                ctx2D.fillStyle = hp.dist < 0.8 ? '#ef4444' : (hp.dist < 1.4 ? '#f59e0b' : '#10b981');
+                ctx2D.beginPath();
+                ctx2D.arc(hp.sx, hp.sy, 2.4 * dpr, 0, Math.PI * 2);
+                ctx2D.fill();
+              } else {
+                // 【超出激光扫描范围的空扫点云】：浅青灰弱化点
+                ctx2D.fillStyle = 'rgba(148, 163, 184, 0.45)'; // Slate 400 浅灰
+                ctx2D.beginPath();
+                ctx2D.arc(hp.sx, hp.sy, 1.2 * dpr, 0, Math.PI * 2);
+                ctx2D.fill();
+              }
             }
           });
         }
@@ -2978,11 +3022,13 @@ HTML_CONTENT = """<!DOCTYPE html>
           const scanPose = (telemetry && telemetry.scan_pose) ? telemetry.scan_pose : renderPose;
           const angleMin = telemetry.scan_angle_min !== undefined ? telemetry.scan_angle_min : -Math.PI;
           const angleInc = telemetry.scan_angle_inc !== undefined ? telemetry.scan_angle_inc : (Math.PI * 2 / ranges.length);
+          const maxRange = (telemetry.lidar_config && telemetry.lidar_config.range_max) || telemetry.scan_range_max || 12.0;
+          const outOfRangeThreshold = maxRange - 0.15;
           let ptIdx = 0;
 
           for (let idx = 0; idx < ranges.length; idx++) {
             const r = ranges[idx];
-            if (r > 0.05 && r < 15.0 && ptIdx < MAX_3D_PTS) {
+            if (r > 0.05 && r <= maxRange + 1.0 && ptIdx < MAX_3D_PTS) {
               const a = scanPose.yaw + angleMin + idx * angleInc;
               const px = scanPose.x + Math.cos(a) * r;
               const py = scanPose.y + Math.sin(a) * r;
@@ -2992,10 +3038,20 @@ HTML_CONTENT = """<!DOCTYPE html>
               ptPos3D[ptIdx * 3 + 1] = py;
               ptPos3D[ptIdx * 3 + 2] = pz;
 
-              // 距离渐变色
-              ptCol3D[ptIdx * 3] = 0.06;
-              ptCol3D[ptIdx * 3 + 1] = 0.72;
-              ptCol3D[ptIdx * 3 + 2] = 0.5;
+              const isHit = (r < outOfRangeThreshold);
+              if (isHit) {
+                // 【实际扫到轮廓的点云】: 鲜明距离安全渐变色 (红/橙/翠绿)
+                if (r < 0.8) {
+                  ptCol3D[ptIdx * 3] = 0.94; ptCol3D[ptIdx * 3 + 1] = 0.27; ptCol3D[ptIdx * 3 + 2] = 0.27; // Red
+                } else if (r < 1.4) {
+                  ptCol3D[ptIdx * 3] = 0.96; ptCol3D[ptIdx * 3 + 1] = 0.62; ptCol3D[ptIdx * 3 + 2] = 0.04; // Amber
+                } else {
+                  ptCol3D[ptIdx * 3] = 0.06; ptCol3D[ptIdx * 3 + 1] = 0.72; ptCol3D[ptIdx * 3 + 2] = 0.5; // Emerald Green
+                }
+              } else {
+                // 【超出激光扫描范围的空扫点云】: 浅青灰弱化点 (Slate 400)
+                ptCol3D[ptIdx * 3] = 0.58; ptCol3D[ptIdx * 3 + 1] = 0.64; ptCol3D[ptIdx * 3 + 2] = 0.72;
+              }
               ptIdx++;
             }
           }
