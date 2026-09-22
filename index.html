@@ -129,9 +129,11 @@
       <div class="flex items-center gap-1">
         <span class="text-[11px] font-bold text-slate-600">场景:</span>
         <select id="sel-scenario" onchange="switchScenario(this.value)" class="bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs text-slate-800 font-medium focus:bg-white focus:border-blue-500">
-          <option value="grid_9_square">九宫格库区</option>
-          <option value="narrow_corridor">窄通道库区</option>
-          <option value="open_yard">开阔堆场</option>
+          <option value="grid_9_square">正方形九宫格智能仓</option>
+          <option value="standard_cross">标准十字仓储中心</option>
+          <option value="narrow_aisle">高密多巷道立体库</option>
+          <option value="rect_loop">长方形环线车间</option>
+          <option value="fms_workshop">柔性制造车间</option>
         </select>
       </div>
 
@@ -167,15 +169,17 @@
       </button>
     </div>
 
-    <!-- 中间：快捷工位下发 Pills -->
-    <div class="flex items-center gap-1 shrink-0 mx-2">
-      <span class="text-[11px] font-bold text-slate-500 mr-0.5">工位:</span>
-      <button onclick="dispatchStation('S1')" class="px-1.5 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-medium text-[11px]">S1 拣选</button>
-      <button onclick="dispatchStation('S2')" class="px-1.5 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-medium text-[11px]">S2 入库</button>
-      <button onclick="dispatchStation('S3')" class="px-1.5 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-medium text-[11px]">S3 质检</button>
-      <button onclick="dispatchStation('S4')" class="px-1.5 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-medium text-[11px]">S4 充电</button>
-      <button onclick="dispatchStation('P0')" class="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-medium text-[11px]">P0 待命</button>
-      <button onclick="cancelNavigation()" class="px-1.5 py-0.5 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-medium text-[11px] flex items-center gap-0.5">
+    <!-- 中间：快捷工位下发 Pills (根据当前场景元数据动态渲染) -->
+    <div id="station-pills-container" class="flex items-center gap-1 shrink-0 mx-2 overflow-x-auto max-w-[420px]">
+      <span class="text-[11px] font-bold text-slate-500 mr-0.5 shrink-0">工位:</span>
+      <div id="station-pills-list" class="flex items-center gap-1 shrink-0">
+        <button onclick="dispatchStation('S1')" class="px-1.5 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-medium text-[11px] whitespace-nowrap">S1 拣选</button>
+        <button onclick="dispatchStation('S2')" class="px-1.5 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-medium text-[11px] whitespace-nowrap">S2 入库</button>
+        <button onclick="dispatchStation('S3')" class="px-1.5 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-medium text-[11px] whitespace-nowrap">S3 质检</button>
+        <button onclick="dispatchStation('S4')" class="px-1.5 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-medium text-[11px] whitespace-nowrap">S4 充电</button>
+        <button onclick="dispatchStation('P0')" class="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-medium text-[11px] whitespace-nowrap">P0 待命</button>
+      </div>
+      <button onclick="cancelNavigation()" class="px-1.5 py-0.5 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-medium text-[11px] flex items-center gap-0.5 shrink-0">
         <i data-lucide="x-circle" class="w-3 h-3"></i> 取消
       </button>
     </div>
@@ -995,8 +999,8 @@
       view2D.scale = 35.0 * window.devicePixelRatio;
     }
 
-    // 航位推算平滑位姿 (Dead Reckoning Latency Compensation)
-    const deadReckonPose = {
+    // 渲染位姿与目标权威位姿 (指数平滑插值，杜绝外推超前导致的位置后退回跳)
+    const renderPose = {
       x: 0,
       y: 0,
       yaw: 0,
@@ -1004,6 +1008,13 @@
       vy: 0,
       wz: 0
     };
+    const targetPose = {
+      x: 0,
+      y: 0,
+      yaw: 0
+    };
+    let hasInitialPose = false;
+    const deadReckonPose = renderPose; // 兼容引用
 
     // --------------------------------------------------------------
     // 初始化入口
@@ -1055,17 +1066,26 @@
     }
 
     // --------------------------------------------------------------
-    // 10Hz 实时遥测轮询与航位推算 (TELEMETRY LOOP)
+    // 10Hz 实时高频遥测轮询与位姿同步 (TELEMETRY LOOP - 10.0 Hz)
     // --------------------------------------------------------------
     let isFetchingTelemetry = false;
+    let needsFullMetadata = true;
+    let telemetryPacketCount = 0;
+    let lastTelemetryHzCalcTime = performance.now();
+    let currentTelemetryHz = '10.0';
+
     function startTelemetryLoop() {
       setInterval(async () => {
         if (isFetchingTelemetry) return;
         isFetchingTelemetry = true;
         try {
-          const res = await fetch('/api/telemetry?full=1');
+          const url = needsFullMetadata ? '/api/telemetry?full=1' : '/api/telemetry';
+          const res = await fetch(url);
           if (res.ok) {
             const data = await res.json();
+            if (needsFullMetadata && data.scenario_metadata) {
+              needsFullMetadata = false;
+            }
             onTelemetryReceived(data);
           }
         } catch (e) {
@@ -1077,16 +1097,39 @@
     }
 
     function onTelemetryReceived(data) {
+      if (!data) return;
+      // 轻量包自动沿用已缓存的静态拓扑与元数据
+      if (telemetry && !data.scenario_metadata && telemetry.scenario_metadata) {
+        data.scenario_metadata = telemetry.scenario_metadata;
+        data.topo_graph = telemetry.topo_graph;
+      }
       telemetry = data;
       lastTelemetryTime = performance.now();
 
-      // 同步推算基准
-      deadReckonPose.x = data.x || 0;
-      deadReckonPose.y = data.y || 0;
-      deadReckonPose.yaw = data.yaw || 0;
-      deadReckonPose.vx = data.vx || 0;
-      deadReckonPose.vy = data.vy || 0;
-      deadReckonPose.wz = data.wz || 0;
+      // 权威位姿目标更新
+      targetPose.x = data.x !== undefined ? data.x : 0;
+      targetPose.y = data.y !== undefined ? data.y : 0;
+      targetPose.yaw = data.yaw !== undefined ? data.yaw : 0;
+      renderPose.vx = data.vx || 0;
+      renderPose.vy = data.vy || 0;
+      renderPose.wz = data.wz || 0;
+
+      // 首次初始化或突变（如一键重置、跨区瞬移）直接瞬时归位
+      if (!hasInitialPose || Math.hypot(targetPose.x - renderPose.x, targetPose.y - renderPose.y) > 1.5) {
+        renderPose.x = targetPose.x;
+        renderPose.y = targetPose.y;
+        renderPose.yaw = targetPose.yaw;
+        hasInitialPose = true;
+      }
+
+      // 实时计算端到端遥测更新帧率 (Hz)
+      telemetryPacketCount++;
+      const nowMs = performance.now();
+      if (nowMs - lastTelemetryHzCalcTime >= 1000) {
+        currentTelemetryHz = (telemetryPacketCount * 1000.0 / (nowMs - lastTelemetryHzCalcTime)).toFixed(1);
+        telemetryPacketCount = 0;
+        lastTelemetryHzCalcTime = nowMs;
+      }
 
       // 更新 HUD
       updateHUD(data);
@@ -1123,6 +1166,22 @@
         injectedObstacles = data.obstacles;
         renderInjectedObstaclesList();
       }
+
+      // 动态更新工位快捷下发 Pills
+      if (data.scenario_metadata && data.scenario_metadata.id !== lastRenderedScenarioId) {
+        lastRenderedScenarioId = data.scenario_metadata.id;
+        renderScenarioStationsPills(data.scenario_metadata.stations);
+      }
+    }
+
+    let lastRenderedScenarioId = '';
+    function renderScenarioStationsPills(stations) {
+      const list = document.getElementById('station-pills-list');
+      if (!list || !stations || !Array.isArray(stations)) return;
+      list.innerHTML = stations.map(st => {
+        const title = st.name || st.id;
+        return `<button onclick="dispatchStation('${st.id}')" class="px-1.5 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-medium text-[11px] whitespace-nowrap" title="下发至 ${title}">${title}</button>`;
+      }).join('');
     }
 
     function updateHUD(data) {
@@ -1138,8 +1197,9 @@
       if (hudPose) hudPose.textContent = `X: ${data.x.toFixed(2)}m Y: ${data.y.toFixed(2)}m θ: ${deg.toFixed(1)}°`;
       if (hudVel) hudVel.textContent = `${(data.vx || 0).toFixed(2)} m/s | ${(data.wz || 0).toFixed(2)} rad/s`;
 
-      const pts = (data.laser_scan && data.laser_scan.ranges) ? data.laser_scan.ranges.length : 720;
-      if (hudLaser) hudLaser.textContent = `${pts} pts (10.0 Hz)`;
+      const pts = (data.scan_ranges && data.scan_ranges.length) ? data.scan_ranges.length : (data.lidar_config ? data.lidar_config.beams : 720);
+      const lFreq = (data.lidar_config && data.lidar_config.freq_hz) ? data.lidar_config.freq_hz.toFixed(1) : currentTelemetryHz;
+      if (hudLaser) hudLaser.textContent = `${pts} pts (${lFreq} Hz)`;
 
       const minDist = data.scan_min_dist !== undefined ? data.scan_min_dist : 12.0;
       if (hudObstacle) {
@@ -2107,6 +2167,8 @@
     }
 
     async function switchScenario(scId) {
+      needsFullMetadata = true;
+      hasInitialPose = false;
       try {
         await fetch('/api/map_scenario', {
           method: 'POST',
@@ -2171,6 +2233,8 @@
     }
 
     async function resetSimulation() {
+      needsFullMetadata = true;
+      hasInitialPose = false;
       try {
         await fetch('/api/sim_reset', { method: 'POST' });
       } catch (e) {
@@ -2304,15 +2368,15 @@
 
     function renderLoop2D() {
       if (cameraMode === '2d' && cv2D && ctx2D) {
-        // 航位推算位姿平滑外推
-        if (telemetry) {
-          const now = performance.now();
-          const dt = (now - lastTelemetryTime) / 1000.0;
-          if (dt > 0 && dt < 0.25) {
-            deadReckonPose.x = telemetry.x + telemetry.vx * Math.cos(telemetry.yaw) * dt;
-            deadReckonPose.y = telemetry.y + telemetry.vx * Math.sin(telemetry.yaw) * dt;
-            deadReckonPose.yaw = telemetry.yaw + telemetry.wz * dt;
-          }
+        // 指数平滑插值 (Exponential Lerp Smoothing)，彻底消除盲目外推导致的向前走后瞬间回退抖动
+        if (hasInitialPose) {
+          const lerpFactor = 0.32;
+          renderPose.x += (targetPose.x - renderPose.x) * lerpFactor;
+          renderPose.y += (targetPose.y - renderPose.y) * lerpFactor;
+          let dYaw = targetPose.yaw - renderPose.yaw;
+          while (dYaw > Math.PI) dYaw -= 2 * Math.PI;
+          while (dYaw < -Math.PI) dYaw += 2 * Math.PI;
+          renderPose.yaw += dYaw * lerpFactor;
         }
         draw2DScene();
       }
@@ -2578,17 +2642,18 @@
       // ------------------------------------------------------------
       if (layerConfig.laser && telemetry && telemetry.scan_ranges && telemetry.scan_ranges.length > 0) {
         const ranges = telemetry.scan_ranges;
+        const scanPose = (telemetry && telemetry.scan_pose) ? telemetry.scan_pose : renderPose;
         const angleMin = telemetry.scan_angle_min !== undefined ? telemetry.scan_angle_min : -Math.PI;
         const angleInc = telemetry.scan_angle_inc !== undefined ? telemetry.scan_angle_inc : (Math.PI * 2 / ranges.length);
-        const robotS = toScreen(deadReckonPose.x, deadReckonPose.y);
+        const robotS = toScreen(scanPose.x, scanPose.y);
 
         const hitPoints = [];
         for (let i = 0; i < ranges.length; i++) {
           const r = ranges[i];
           if (r > 0.05 && r <= 15.0) {
-            const beamAngle = deadReckonPose.yaw + angleMin + i * angleInc;
-            const hx = deadReckonPose.x + Math.cos(beamAngle) * r;
-            const hy = deadReckonPose.y + Math.sin(beamAngle) * r;
+            const beamAngle = scanPose.yaw + angleMin + i * angleInc;
+            const hx = scanPose.x + Math.cos(beamAngle) * r;
+            const hy = scanPose.y + Math.sin(beamAngle) * r;
             const hs = toScreen(hx, hy);
             hitPoints.push({ sx: hs.sx, sy: hs.sy, dist: r });
           }
@@ -2747,10 +2812,10 @@
       // ------------------------------------------------------------
       // 7. AMR 机器人车身底盘 (ROBOT CHASSIS & HEADING)
       // ------------------------------------------------------------
-      const rS = toScreen(deadReckonPose.x, deadReckonPose.y);
+      const rS = toScreen(renderPose.x, renderPose.y);
       ctx2D.save();
       ctx2D.translate(rS.sx, rS.sy);
-      ctx2D.rotate(-deadReckonPose.yaw); // Canvas Y 轴向下，取反
+      ctx2D.rotate(-renderPose.yaw); // Canvas Y 轴向下，取反
 
       const carW = 0.8 * view2D.scale;
       const carL = 1.2 * view2D.scale;
@@ -2879,35 +2944,39 @@
     function renderLoop3D() {
       if (cameraMode !== '2d') {
         if (robot3DGroup) {
-          robot3DGroup.position.set(deadReckonPose.x, deadReckonPose.y, 0);
-          robot3DGroup.rotation.z = deadReckonPose.yaw;
+          robot3DGroup.position.set(renderPose.x, renderPose.y, 0);
+          robot3DGroup.rotation.z = renderPose.yaw;
         }
 
         // 跟随相机模式
         if (cameraMode === 'follow' && camera3D && controls3D) {
-          controls3D.target.set(deadReckonPose.x, deadReckonPose.y, 0.5);
+          controls3D.target.set(renderPose.x, renderPose.y, 0.5);
           camera3D.position.set(
-            deadReckonPose.x - Math.cos(deadReckonPose.yaw) * 6,
-            deadReckonPose.y - Math.sin(deadReckonPose.yaw) * 6,
+            renderPose.x - Math.cos(renderPose.yaw) * 6,
+            renderPose.y - Math.sin(renderPose.yaw) * 6,
             4
           );
         } else if (cameraMode === 'top' && camera3D && controls3D) {
-          controls3D.target.set(deadReckonPose.x, deadReckonPose.y, 0);
-          camera3D.position.set(deadReckonPose.x, deadReckonPose.y, 16);
+          controls3D.target.set(renderPose.x, renderPose.y, 0);
+          camera3D.position.set(renderPose.x, renderPose.y, 16);
         }
 
-        // 更新 3D 点云
-        if (telemetry && telemetry.laser_scan && telemetry.laser_scan.ranges && pointCloud3D) {
-          const ranges = telemetry.laser_scan.ranges;
-          const angleMin = telemetry.laser_scan.angle_min || -Math.PI;
-          const angleInc = telemetry.laser_scan.angle_increment || (Math.PI * 2 / ranges.length);
+        // 更新 3D 点云 (以 scan_pose 空间物理投影，确保点云与障碍物和货架严格对齐)
+        const ranges = (telemetry && telemetry.scan_ranges && telemetry.scan_ranges.length > 0)
+          ? telemetry.scan_ranges
+          : (telemetry && telemetry.laser_scan && telemetry.laser_scan.ranges ? telemetry.laser_scan.ranges : null);
+        if (ranges && pointCloud3D) {
+          const scanPose = (telemetry && telemetry.scan_pose) ? telemetry.scan_pose : renderPose;
+          const angleMin = telemetry.scan_angle_min !== undefined ? telemetry.scan_angle_min : -Math.PI;
+          const angleInc = telemetry.scan_angle_inc !== undefined ? telemetry.scan_angle_inc : (Math.PI * 2 / ranges.length);
           let ptIdx = 0;
 
-          ranges.forEach((r, idx) => {
-            if (r > 0.05 && r < 12.0 && ptIdx < MAX_3D_PTS) {
-              const a = deadReckonPose.yaw + angleMin + idx * angleInc;
-              const px = deadReckonPose.x + Math.cos(a) * r;
-              const py = deadReckonPose.y + Math.sin(a) * r;
+          for (let idx = 0; idx < ranges.length; idx++) {
+            const r = ranges[idx];
+            if (r > 0.05 && r < 15.0 && ptIdx < MAX_3D_PTS) {
+              const a = scanPose.yaw + angleMin + idx * angleInc;
+              const px = scanPose.x + Math.cos(a) * r;
+              const py = scanPose.y + Math.sin(a) * r;
               const pz = 0.3;
 
               ptPos3D[ptIdx * 3] = px;
@@ -2920,7 +2989,7 @@
               ptCol3D[ptIdx * 3 + 2] = 0.5;
               ptIdx++;
             }
-          });
+          }
 
           // 填充剩余空点
           for (let i = ptIdx; i < MAX_3D_PTS; i++) {

@@ -638,6 +638,7 @@ class WebTeleopBridge(Node):
             "chassis_type": self.active_chassis_type,
             "planner_type": self.active_planner,
             "active_scenario": self.active_scenario,
+            "map_scenario": self.active_scenario,
             "lidar_config": self.lidar_config,
             "scenario_metadata": self.dijkstra_planner.get_scenario_metadata(),
             "scan_ranges": [],
@@ -755,6 +756,7 @@ class WebTeleopBridge(Node):
             self.dynamic_obstacles = []
             meta = self.dijkstra_planner.get_scenario_metadata()
             self.telemetry["active_scenario"] = scenario_id
+            self.telemetry["map_scenario"] = scenario_id
             self.telemetry["scenario_metadata"] = meta
             self.telemetry["topo_graph"] = self.dijkstra_planner.get_topology()
             self.telemetry["dynamic_obstacles"] = []
@@ -850,6 +852,11 @@ class WebTeleopBridge(Node):
             self.telemetry["scan_angle_max"] = float(msg.angle_max)
             self.telemetry["scan_angle_inc"] = float(msg.angle_increment * step)
             self.telemetry["scan_min_dist"] = round(min_dist, 2)
+            self.telemetry["scan_pose"] = {
+                "x": round(float(self.telemetry["x"]), 3),
+                "y": round(float(self.telemetry["y"]), 3),
+                "yaw": round(float(self.telemetry["yaw"]), 4)
+            }
             cur_vx = self.telemetry["vx"]
 
             # Update live lidar configuration feedback
@@ -1125,6 +1132,11 @@ class WebTeleopBridge(Node):
             self.telemetry["target_goal"] = None
             self.telemetry["nav_status"] = "IDLE"
             self.telemetry["nav_dist_rem"] = 0.0
+            self.telemetry["scan_pose"] = {
+                "x": float(orig["x"]),
+                "y": float(orig["y"]),
+                "yaw": float(orig.get("yaw", 0.0))
+            }
         self.clear_obstacles()
         msg = String()
         msg.data = self.active_scenario
