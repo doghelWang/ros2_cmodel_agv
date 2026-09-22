@@ -1056,6 +1056,8 @@ class WebTeleopBridge(Node):
 
     def add_obstacle(self, x: float, y: float, w: float = 0.8, h: float = 0.8, obs_type: str = "box"):
         with self.lock:
+            if not self.is_paused:
+                return False, "仅在物理仿真暂停状态下允许添加扰动模块，请先暂停仿真"
             new_id = len(self.dynamic_obstacles) + 1
             obs = {
                 "id": new_id,
@@ -1063,13 +1065,14 @@ class WebTeleopBridge(Node):
                 "y": round(y, 2),
                 "w": round(w, 2),
                 "h": round(h, 2),
-                "type": obs_type
+                "type": obs_type,
+                "active": False  # 待恢复仿真后生效
             }
             self.dynamic_obstacles.append(obs)
             self.telemetry["dynamic_obstacles"] = list(self.dynamic_obstacles)
             self.telemetry["obstacles"] = list(self.dynamic_obstacles)
         self.broadcast_obstacles()
-        self.get_logger().info(f"Added obstacle #{new_id} ({obs_type}) at ({x}, {y})")
+        self.get_logger().info(f"Added staged obstacle #{new_id} ({obs_type}) at ({x}, {y}), waiting for unpause to activate")
         type_names = {
             "pallet": "标准木质栈板",
             "shelf": "双层轻型货架",
@@ -1079,10 +1082,11 @@ class WebTeleopBridge(Node):
         type_name = type_names.get(obs_type, "工业实体障碍物")
         self.event_hub.emit(
             "sensors", "OBSTACLE_CHANGE", "warning",
-            f"新增动态物理实体 #{new_id} ({type_name})",
-            f"在坐标 ({x:.2f}, {y:.2f}) 放置规格为 {w:.2f}x{h:.2f}m 的{type_name}物理实体",
+            f"布置扰动物理实体 #{new_id} ({type_name})",
+            f"在坐标 ({x:.2f}, {y:.2f}) 放置规格为 {w:.2f}x{h:.2f}m 的{type_name}，将在恢复仿真时正式生效",
             obs
         )
+        return True, "ok"
 
     def generate_random_obstacles(self, count: int = 3):
         import random
@@ -1124,7 +1128,8 @@ class WebTeleopBridge(Node):
                 "y": oy,
                 "w": ow,
                 "h": oh,
-                "type": chosen_type
+                "type": chosen_type,
+                "active": not self.is_paused
             })
 
         with self.lock:
@@ -1144,15 +1149,23 @@ class WebTeleopBridge(Node):
         with self.lock:
             self.is_paused = paused
             self.telemetry["is_paused"] = self.is_paused
+            if not paused:
+                # 恢复仿真时物体生效：激活所有暂存的障碍物实体
+                for obs in self.dynamic_obstacles:
+                    obs["active"] = True
+                self.telemetry["dynamic_obstacles"] = list(self.dynamic_obstacles)
+                self.telemetry["obstacles"] = list(self.dynamic_obstacles)
         msg = String()
         msg.data = json.dumps({"paused": paused})
         self.pause_pub.publish(msg)
+        if not paused:
+            self.broadcast_obstacles()
         action_name = "暂停" if paused else "恢复"
         self.get_logger().info(f"Simulation {action_name}")
         self.event_hub.emit(
             "system", "SIM_STATE_CHANGE", "info",
             f"仿真环境已{action_name}",
-            f"操作员已{action_name}仿真时钟与物理步进",
+            f"操作员已{action_name}仿真时钟与物理步进" + ("，所有暂存扰动模块已正式生效进入物理碰撞引擎" if not paused else "，当前可布置扰动模块"),
             {"paused": paused}
         )
 
@@ -1370,6 +1383,34 @@ class WebTeleopBridge(Node):
                             v_ratio = 1.0
 
                     vx_nom = max(0.18, max_v * v_ratio)
+
+                    # 激光雷达正前方障碍物探测 (前向 ±25° 扇区)
+                    ranges = self.telemetry.get("scan_ranges", [])
+                    front_dist = 12.0
+                    if ranges and len(ranges) >= 180:
+                        mid = len(ranges) // 2
+                        cone_span = max(4, int(len(ranges) * (25.0 / 360.0)))
+                        f_ranges = [r for r in ranges[mid - cone_span : mid + cone_span + 1] if r > 0.05]
+                        if f_ranges:
+                            front_dist = min(f_ranges)
+
+                    stop_edge_dist = 1.36  # 车头外凸 1.308m，1.36m 时车头距障碍物表面 <= 5cm (到达障碍物边缘)
+                    decel_zone_dist = 2.15 # 减速区范围 (1.36m ~ 2.15m)
+
+                    if front_dist <= stop_edge_dist:
+                        # 【已运动到障碍物边缘】：平稳停车等待
+                        self.publish_cmd_vel(0.0, 0.0, 0.0)
+                        with self.lock:
+                            self.telemetry["nav_status"] = "OBSTACLE_WAIT"
+                        time.sleep(0.04)
+                        continue
+                    elif front_dist < decel_zone_dist:
+                        # 【处于减速区】：不必停车！平稳降速跟进至障碍物边缘
+                        obs_ratio = max(0.12, (front_dist - stop_edge_dist) / (decel_zone_dist - stop_edge_dist))
+                        vx_nom = min(vx_nom, max(0.10, max_v * obs_ratio))
+                        with self.lock:
+                            if self.telemetry["nav_status"] == "OBSTACLE_WAIT":
+                                self.telemetry["nav_status"] = "NAVIGATING"
                     # Stanley line following: desired heading smoothly guides AGV to centerline
                     heading_correction = math.atan2(1.6 * cross_track, max(0.25, vx_nom))
                     desired_heading = seg_heading - heading_correction
@@ -1707,7 +1748,17 @@ class TeleopHTTPHandler(SimpleHTTPRequestHandler):
             h = float(req.get("h", 0.8))
             obs_type = str(req.get("type", "box"))
             if bridge_node:
-                bridge_node.add_obstacle(x, y, w, h, obs_type)
+                ok, msg = bridge_node.add_obstacle(x, y, w, h, obs_type)
+                if not ok:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"status": "error", "message": msg}).encode("utf-8"))
+                    return
+                res = {"status": "ok", "message": "扰动模块已添加，将在恢复仿真时生效"}
+            else:
+                res = {"status": "error", "message": "bridge_node not initialized"}
         elif parsed.path == "/api/events/clear":
             res = event_hub.clear()
         elif parsed.path == "/api/events/inject":

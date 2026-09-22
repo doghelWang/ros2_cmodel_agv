@@ -167,27 +167,35 @@ class CModelAGVSimulator(Node):
         except Exception as e:
             self.get_logger().error(f'Error parsing set_io: {e}')
 
+    def _apply_obstacles(self, obstacles):
+        self.dynamic_obstacles = list(obstacles)
+        if self.use_pybullet and self.pybullet_engine:
+            all_walls = list(self.walls)
+            for obs in self.dynamic_obstacles:
+                ox = float(obs.get("x", 0.0))
+                oy = float(obs.get("y", 0.0))
+                ow = float(obs.get("w", 0.8))
+                oh = float(obs.get("h", 0.8))
+                hw, hh = ow / 2.0, oh / 2.0
+                all_walls.extend([
+                    (ox - hw, oy - hh, ox + hw, oy - hh),
+                    (ox + hw, oy - hh, ox + hw, oy + hh),
+                    (ox + hw, oy + hh, ox - hw, oy + hh),
+                    (ox - hw, oy + hh, ox - hw, oy - hh)
+                ])
+            self.pybullet_engine.set_scenario_walls(all_walls)
+        self.get_logger().info(f'Activated dynamic obstacles: {len(self.dynamic_obstacles)} obstacles in physics')
+
     def obstacle_callback(self, msg: String):
         try:
             data = json.loads(msg.data)
             if isinstance(data, list):
-                self.dynamic_obstacles = data
-                if self.use_pybullet and self.pybullet_engine:
-                    all_walls = list(self.walls)
-                    for obs in self.dynamic_obstacles:
-                        ox = float(obs.get("x", 0.0))
-                        oy = float(obs.get("y", 0.0))
-                        ow = float(obs.get("w", 0.8))
-                        oh = float(obs.get("h", 0.8))
-                        hw, hh = ow / 2.0, oh / 2.0
-                        all_walls.extend([
-                            (ox - hw, oy - hh, ox + hw, oy - hh),
-                            (ox + hw, oy - hh, ox + hw, oy + hh),
-                            (ox + hw, oy + hh, ox - hw, oy + hh),
-                            (ox - hw, oy + hh, ox - hw, oy - hh)
-                        ])
-                    self.pybullet_engine.set_scenario_walls(all_walls)
-                self.get_logger().info(f'Received dynamic obstacles update: {len(self.dynamic_obstacles)} obstacles active')
+                if self.is_paused:
+                    self.staged_obstacles = data
+                    self.get_logger().info(f'Staged {len(data)} obstacles while paused, will activate upon resumption')
+                else:
+                    self.staged_obstacles = data
+                    self._apply_obstacles(data)
         except Exception as e:
             self.get_logger().error(f'Error parsing set_obstacles: {e}')
 
@@ -226,12 +234,17 @@ class CModelAGVSimulator(Node):
     def pause_callback(self, msg: String):
         try:
             val = msg.data.strip().lower()
+            was_paused = self.is_paused
             if "{" in val:
                 req = json.loads(msg.data)
                 self.is_paused = bool(req.get("paused", False))
             else:
                 self.is_paused = val in ("1", "true", "pause", "paused")
             self.get_logger().info(f"Simulation pause state updated: {self.is_paused}")
+            if was_paused and not self.is_paused:
+                staged = getattr(self, "staged_obstacles", None)
+                if staged is not None:
+                    self._apply_obstacles(staged)
         except Exception as e:
             self.get_logger().error(f"Error parsing /set_sim_pause: {e}")
 
