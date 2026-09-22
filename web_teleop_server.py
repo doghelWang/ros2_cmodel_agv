@@ -1115,6 +1115,16 @@ class WebTeleopBridge(Node):
         with self.lock:
             sc = SCENARIO_DEFINITIONS.get(self.active_scenario, {})
             orig = sc.get("origin", {"x": 0.0, "y": 0.0, "yaw": 0.0})
+            self.telemetry["x"] = float(orig["x"])
+            self.telemetry["y"] = float(orig["y"])
+            self.telemetry["yaw"] = float(orig.get("yaw", 0.0))
+            self.telemetry["vx"] = 0.0
+            self.telemetry["vy"] = 0.0
+            self.telemetry["wz"] = 0.0
+            self.telemetry["plan_path"] = []
+            self.telemetry["target_goal"] = None
+            self.telemetry["nav_status"] = "IDLE"
+            self.telemetry["nav_dist_rem"] = 0.0
         self.clear_obstacles()
         msg = String()
         msg.data = self.active_scenario

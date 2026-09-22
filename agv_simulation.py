@@ -141,7 +141,7 @@ class CModelAGVSimulator(Node):
 
     def map_scenario_callback(self, msg: String):
         target_sc = msg.data.strip()
-        if target_sc in SCENARIO_DEFINITIONS and target_sc != self.active_scenario:
+        if target_sc in SCENARIO_DEFINITIONS:
             self.active_scenario = target_sc
             sc = SCENARIO_DEFINITIONS[target_sc]
             self.walls = list(sc["walls"])

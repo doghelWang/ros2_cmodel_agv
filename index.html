@@ -2068,14 +2068,23 @@
     // 调度导航与场景控制 (DISPATCH & SCENARIO)
     // --------------------------------------------------------------
     async function dispatchStation(stationId) {
-      const stationMap = {
-        S1: { x: 3.0, y: 3.0, yaw: 0.0 },
-        S2: { x: -3.0, y: 3.0, yaw: Math.PI / 2 },
-        S3: { x: -3.0, y: -3.0, yaw: Math.PI },
-        S4: { x: 3.0, y: -3.0, yaw: -Math.PI / 2 },
-        P0: { x: 0.0, y: 0.0, yaw: 0.0 }
-      };
-      const goal = stationMap[stationId];
+      let goal = null;
+      if (telemetry && telemetry.scenario_metadata && telemetry.scenario_metadata.stations) {
+        const found = telemetry.scenario_metadata.stations.find(st => st.id === stationId || (st.name && st.name.includes(stationId)));
+        if (found) {
+          goal = { x: found.x, y: found.y, yaw: found.dock_yaw !== undefined ? found.dock_yaw : 0.0 };
+        }
+      }
+      if (!goal) {
+        const fallback = {
+          S1: { x: 0.0, y: 5.0, yaw: Math.PI / 2 },
+          S2: { x: -5.0, y: 0.0, yaw: Math.PI },
+          S3: { x: 0.0, y: -5.0, yaw: -Math.PI / 2 },
+          S4: { x: 5.0, y: 0.0, yaw: 0.0 },
+          P0: { x: 0.0, y: 0.0, yaw: 0.0 }
+        };
+        goal = fallback[stationId];
+      }
       if (!goal) return;
 
       try {
