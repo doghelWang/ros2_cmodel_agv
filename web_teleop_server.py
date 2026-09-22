@@ -652,6 +652,7 @@ class WebTeleopBridge(Node):
             "nav_dist_rem": 0.0,
             "is_paused": False,
             "dynamic_obstacles": [],
+            "obstacles": [],
             "topo_graph": self.dijkstra_planner.get_topology(),
             "vision_markers": [],
             "joint_states": {
@@ -710,7 +711,8 @@ class WebTeleopBridge(Node):
                 "scan_ranges": self.telemetry.get("scan_ranges", []),
                 "scan_min_dist": self.telemetry.get("scan_min_dist", 12.0),
                 "vision_markers": self.telemetry.get("vision_markers", []),
-                "dynamic_obstacles": self.telemetry.get("dynamic_obstacles", [])
+                "dynamic_obstacles": self.telemetry.get("dynamic_obstacles", []),
+                "obstacles": self.telemetry.get("dynamic_obstacles", [])
             }
         perf_summary = None
         if perf_monitor:
@@ -760,6 +762,7 @@ class WebTeleopBridge(Node):
             self.telemetry["scenario_metadata"] = meta
             self.telemetry["topo_graph"] = self.dijkstra_planner.get_topology()
             self.telemetry["dynamic_obstacles"] = []
+            self.telemetry["obstacles"] = []
             self.telemetry["plan_path"] = []
             self.telemetry["target_goal"] = None
             self.telemetry["nav_status"] = "IDLE"
@@ -1041,27 +1044,43 @@ class WebTeleopBridge(Node):
         with self.lock:
             self.dynamic_obstacles = []
             self.telemetry["dynamic_obstacles"] = []
+            self.telemetry["obstacles"] = []
         self.broadcast_obstacles()
         self.get_logger().info("Cleared all dynamic obstacles")
         self.event_hub.emit(
             "sensors", "OBSTACLE_CHANGE", "info",
             "动态干扰路障已清空",
-            "已清空移除主干道上所有动态干扰路障，导轨路网恢复畅通",
+            "已清空移除主干道上所有动态干扰路障与物理实体，导轨路网恢复畅通",
             {"count": 0}
         )
 
-    def add_obstacle(self, x: float, y: float, w: float = 0.8, h: float = 0.8):
+    def add_obstacle(self, x: float, y: float, w: float = 0.8, h: float = 0.8, obs_type: str = "box"):
         with self.lock:
             new_id = len(self.dynamic_obstacles) + 1
-            obs = {"id": new_id, "x": round(x, 2), "y": round(y, 2), "w": round(w, 2), "h": round(h, 2)}
+            obs = {
+                "id": new_id,
+                "x": round(x, 2),
+                "y": round(y, 2),
+                "w": round(w, 2),
+                "h": round(h, 2),
+                "type": obs_type
+            }
             self.dynamic_obstacles.append(obs)
             self.telemetry["dynamic_obstacles"] = list(self.dynamic_obstacles)
+            self.telemetry["obstacles"] = list(self.dynamic_obstacles)
         self.broadcast_obstacles()
-        self.get_logger().info(f"Added obstacle #{new_id} at ({x}, {y})")
+        self.get_logger().info(f"Added obstacle #{new_id} ({obs_type}) at ({x}, {y})")
+        type_names = {
+            "pallet": "标准木质栈板",
+            "shelf": "双层轻型货架",
+            "box": "工业周转纸箱",
+            "person": "车间作业人员"
+        }
+        type_name = type_names.get(obs_type, "工业实体障碍物")
         self.event_hub.emit(
             "sensors", "OBSTACLE_CHANGE", "warning",
-            f"新增动态干扰路障 #{new_id}",
-            f"在坐标 ({x:.2f}, {y:.2f}) 放置规格为 {w:.2f}x{h:.2f}m 的工业障碍物",
+            f"新增动态物理实体 #{new_id} ({type_name})",
+            f"在坐标 ({x:.2f}, {y:.2f}) 放置规格为 {w:.2f}x{h:.2f}m 的{type_name}物理实体",
             obs
         )
 
@@ -1076,6 +1095,14 @@ class WebTeleopBridge(Node):
         random.shuffle(nodes)
         new_obs = []
 
+        type_defs = {
+            "pallet": (1.2, 1.0),
+            "shelf": (2.0, 1.0),
+            "box": (0.8, 0.8),
+            "person": (0.5, 0.5)
+        }
+        type_keys = list(type_defs.keys())
+
         for nx, ny in nodes:
             if len(new_obs) >= count:
                 break
@@ -1087,19 +1114,29 @@ class WebTeleopBridge(Node):
             if any(math.hypot(ox - sx, oy - sy) < 1.1 for sx, sy in stations):
                 continue
 
-            ow = round(random.uniform(0.7, 0.85), 2)
-            oh = round(random.uniform(0.7, 0.85), 2)
-            new_obs.append({"id": len(new_obs) + 1, "x": ox, "y": oy, "w": ow, "h": oh})
+            chosen_type = random.choice(type_keys)
+            dw, dh = type_defs[chosen_type]
+            ow = round(dw, 2)
+            oh = round(dh, 2)
+            new_obs.append({
+                "id": len(new_obs) + 1,
+                "x": ox,
+                "y": oy,
+                "w": ow,
+                "h": oh,
+                "type": chosen_type
+            })
 
         with self.lock:
             self.dynamic_obstacles = new_obs
             self.telemetry["dynamic_obstacles"] = list(self.dynamic_obstacles)
+            self.telemetry["obstacles"] = list(self.dynamic_obstacles)
         self.broadcast_obstacles()
         self.get_logger().info(f"Generated {len(new_obs)} random obstacles")
         self.event_hub.emit(
             "sensors", "OBSTACLE_CHANGE", "warning",
-            "随机布置动态干扰路障",
-            f"在仓储拓扑主通道内随机部署了 {len(new_obs)} 处工业干扰物，检验动态避障能力",
+            "随机布置动态干扰物理实体",
+            f"在仓储拓扑主通道内随机部署了 {len(new_obs)} 处工业干扰实体(托盘/货架/纸箱/人员)，检验动态避障能力",
             {"count": len(new_obs), "obstacles": new_obs}
         )
 
@@ -1668,8 +1705,9 @@ class TeleopHTTPHandler(SimpleHTTPRequestHandler):
             y = float(req.get("y", 0.0))
             w = float(req.get("w", 0.8))
             h = float(req.get("h", 0.8))
+            obs_type = str(req.get("type", "box"))
             if bridge_node:
-                bridge_node.add_obstacle(x, y, w, h)
+                bridge_node.add_obstacle(x, y, w, h, obs_type)
         elif parsed.path == "/api/events/clear":
             res = event_hub.clear()
         elif parsed.path == "/api/events/inject":

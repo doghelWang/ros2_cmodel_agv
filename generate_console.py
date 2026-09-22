@@ -1176,9 +1176,10 @@ HTML_CONTENT = """<!DOCTYPE html>
         if (selPl && selPl.value !== data.planner_type) selPl.value = data.planner_type;
       }
 
-      // 障碍物列表同步
-      if (data.obstacles && Array.isArray(data.obstacles)) {
-        injectedObstacles = data.obstacles;
+      // 障碍物列表同步 (兼容 dynamic_obstacles 与 obstacles 双键)
+      const obsList = data.dynamic_obstacles || data.obstacles;
+      if (obsList && Array.isArray(obsList)) {
+        injectedObstacles = obsList;
         renderInjectedObstaclesList();
       }
 
@@ -2072,6 +2073,21 @@ HTML_CONTENT = """<!DOCTYPE html>
       });
     }
 
+    function showToast(msg, type = 'info') {
+      let toast = document.getElementById('toast-notification');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'toast-notification';
+        document.body.appendChild(toast);
+      }
+      const bg = type === 'success' ? 'bg-emerald-600' : (type === 'warning' ? 'bg-amber-600' : 'bg-slate-800');
+      toast.className = `fixed top-14 right-6 z-50 px-3.5 py-2 rounded-lg shadow-lg text-xs font-bold text-white transition-all transform duration-300 pointer-events-none opacity-100 translate-y-0 ${bg}`;
+      toast.innerText = msg;
+      setTimeout(() => {
+        toast.className = toast.className.replace('opacity-100 translate-y-0', 'opacity-0 translate-y-[-10px]');
+      }, 2500);
+    }
+
     async function confirmInjectElement() {
       if (!telemetry) return;
       const posType = document.getElementById('sel-inject-pos').value;
@@ -2113,10 +2129,17 @@ HTML_CONTENT = """<!DOCTYPE html>
           })
         });
         if (res.ok) {
-          alert(`✅ 已在场景中注入「${selectedInjectType}」障碍物 (X:${targetX.toFixed(2)}, Y:${targetY.toFixed(2)})！`);
+          const typeNames = {
+            pallet: '🪵 木质栈板',
+            shelf: '🏗️ 双层货架',
+            box: '📦 周转纸箱',
+            person: '👷 车间人员'
+          };
+          const name = typeNames[selectedInjectType] || selectedInjectType;
+          showToast(`✅ 已注入 ${name} (X:${targetX.toFixed(2)}, Y:${targetY.toFixed(2)})！`, 'success');
         }
       } catch (e) {
-        alert('注入失败: ' + e);
+        showToast('注入失败: ' + e, 'warning');
       }
     }
 
@@ -2127,15 +2150,27 @@ HTML_CONTENT = """<!DOCTYPE html>
         container.innerHTML = '<div class="text-[11px] text-slate-400 text-center py-3 italic">暂无人工注入的扰动元素</div>';
         return;
       }
-      container.innerHTML = injectedObstacles.map((obs, idx) => `
-        <div class="p-1.5 rounded bg-white border border-slate-200 flex items-center justify-between text-[11px]">
-          <div>
-            <span class="font-bold text-slate-800">#${idx + 1} 障碍块</span>
-            <span class="text-slate-500 font-mono text-[10px]">(${obs.x.toFixed(1)}, ${obs.y.toFixed(1)}) ${obs.w}x${obs.h}m</span>
+      const typeInfo = {
+        pallet: { icon: '🪵', name: '木栈板', badge: 'bg-amber-100 text-amber-800 border-amber-200' },
+        shelf: { icon: '🏗️', name: '仓储货架', badge: 'bg-blue-100 text-blue-800 border-blue-200' },
+        box: { icon: '📦', name: '周转箱', badge: 'bg-orange-100 text-orange-800 border-orange-200' },
+        person: { icon: '👷', name: '作业人员', badge: 'bg-rose-100 text-rose-800 border-rose-200' }
+      };
+      container.innerHTML = injectedObstacles.map((obs, idx) => {
+        const info = typeInfo[obs.type] || { icon: '⚠️', name: '障碍物', badge: 'bg-slate-100 text-slate-800 border-slate-200' };
+        return `
+          <div class="p-1.5 rounded bg-white border border-slate-200 flex items-center justify-between text-[11px] hover:border-slate-300 transition-colors">
+            <div class="flex items-center gap-1.5">
+              <span class="text-sm">${info.icon}</span>
+              <div>
+                <span class="font-bold text-slate-800">#${obs.id || (idx + 1)} ${info.name}</span>
+                <span class="text-slate-500 font-mono text-[10px] block">(${obs.x.toFixed(1)}, ${obs.y.toFixed(1)}) ${obs.w}x${obs.h}m</span>
+              </div>
+            </div>
+            <span class="text-[10px] px-1.5 py-0.5 rounded border font-medium ${info.badge}">物理实体</span>
           </div>
-          <span class="text-[10px] text-amber-700 bg-amber-50 px-1 rounded">PyBullet 碰撞体</span>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
     async function clearAllObstacles() {
@@ -2143,6 +2178,7 @@ HTML_CONTENT = """<!DOCTYPE html>
         await fetch('/api/obstacles/clear', { method: 'POST' });
         injectedObstacles = [];
         renderInjectedObstaclesList();
+        showToast('🗑️ 已清空全部仿真路障与物理实体', 'info');
       } catch (e) {
         console.error('clearAllObstacles error:', e);
       }
@@ -2517,35 +2553,240 @@ HTML_CONTENT = """<!DOCTYPE html>
             }
           });
         }
+      }
 
-        // 2.3 动态扰动障碍物 (Injected Dynamic Obstacles)
-        if (injectedObstacles && injectedObstacles.length > 0) {
-          injectedObstacles.forEach(obs => {
-            const s = toScreen(obs.x - obs.w / 2, obs.y + obs.h / 2);
-            const w = obs.w * view2D.scale;
-            const h = obs.h * view2D.scale;
+      // ------------------------------------------------------------
+      // 2.3 动态扰动物理实体 (INJECTED PHYSICAL ENTITIES: 人员/托盘/货架/纸箱)
+      // ------------------------------------------------------------
+      if (layerConfig.environment && injectedObstacles && injectedObstacles.length > 0) {
+        function drawObstacle2DLabel(cx, cy, text, accentColor) {
+          ctx2D.save();
+          ctx2D.font = `bold ${Math.max(9, Math.min(13, 10.5 * dpr))}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+          ctx2D.textAlign = 'center';
+          ctx2D.textBaseline = 'middle';
+          const tm = ctx2D.measureText(text);
+          const pillW = tm.width + 12 * dpr;
+          const pillH = 18 * dpr;
+          const pillX = cx - pillW / 2;
+          const pillY = cy - pillH / 2;
 
-            const colorMap = {
-              pallet: { fill: '#fef3c7', stroke: '#d97706', text: '🪵 木栈板' },
-              shelf: { fill: '#ede9fe', stroke: '#7c3aed', text: '🏗️ 货架' },
-              box: { fill: '#e0f2fe', stroke: '#0284c7', text: '📦 周转箱' },
-              person: { fill: '#ffe4e6', stroke: '#e11d48', text: '👷 作业人员' }
-            };
-            const theme = colorMap[obs.type] || { fill: '#fde68a', stroke: '#d97706', text: '⚠️ 障碍物' };
+          ctx2D.fillStyle = 'rgba(15, 23, 42, 0.9)';
+          ctx2D.beginPath();
+          if (ctx2D.roundRect) ctx2D.roundRect(pillX, pillY, pillW, pillH, 4 * dpr);
+          else ctx2D.fillRect(pillX, pillY, pillW, pillH);
+          ctx2D.fill();
 
-            ctx2D.fillStyle = theme.fill;
+          ctx2D.strokeStyle = accentColor || '#38bdf8';
+          ctx2D.lineWidth = 1.2 * dpr;
+          ctx2D.beginPath();
+          if (ctx2D.roundRect) ctx2D.roundRect(pillX, pillY, pillW, pillH, 4 * dpr);
+          else ctx2D.strokeRect(pillX, pillY, pillW, pillH);
+          ctx2D.stroke();
+
+          ctx2D.fillStyle = '#f8fafc';
+          ctx2D.fillText(text, cx, cy);
+          ctx2D.restore();
+        }
+
+        injectedObstacles.forEach(obs => {
+          const s = toScreen(obs.x - obs.w / 2, obs.y + obs.h / 2);
+          const w = obs.w * view2D.scale;
+          const h = obs.h * view2D.scale;
+          const center = toScreen(obs.x, obs.y);
+          const type = obs.type || 'box';
+
+          ctx2D.save();
+
+          // 实体软阴影 (Floor Drop Shadow)
+          ctx2D.shadowColor = 'rgba(15, 23, 42, 0.28)';
+          ctx2D.shadowBlur = 6 * dpr;
+          ctx2D.shadowOffsetX = 2 * dpr;
+          ctx2D.shadowOffsetY = 3 * dpr;
+
+          if (type === 'person') {
+            // 👷 车间作业人员 2D 实体
+            // 1. 地面安全预警环 (半透明粉红 + 虚线红圈)
+            ctx2D.shadowColor = 'transparent';
+            ctx2D.strokeStyle = 'rgba(239, 68, 68, 0.75)';
+            ctx2D.fillStyle = 'rgba(254, 226, 226, 0.35)';
+            ctx2D.lineWidth = 1.5 * dpr;
+            ctx2D.setLineDash([4 * dpr, 3 * dpr]);
+            ctx2D.beginPath();
+            const safetyR = Math.max(w, h) * 0.9;
+            ctx2D.arc(center.sx, center.sy, safetyR, 0, Math.PI * 2);
+            ctx2D.fill();
+            ctx2D.stroke();
+            ctx2D.setLineDash([]);
+
+            // 2. 躯干高亮荧光背心 (Safety Orange)
+            const vestW = w * 0.75;
+            const vestH = h * 0.55;
+            const vestX = center.sx - vestW / 2;
+            const vestY = center.sy - vestH / 2 + 2 * dpr;
+            ctx2D.fillStyle = '#ea580c';
+            ctx2D.beginPath();
+            if (ctx2D.roundRect) ctx2D.roundRect(vestX, vestY, vestW, vestH, 4 * dpr);
+            else ctx2D.fillRect(vestX, vestY, vestW, vestH);
+            ctx2D.fill();
+            ctx2D.strokeStyle = '#c2410c';
+            ctx2D.lineWidth = 1.5 * dpr;
+            ctx2D.stroke();
+
+            // 3. 背心银白反光带
+            ctx2D.strokeStyle = '#f8fafc';
+            ctx2D.lineWidth = 2 * dpr;
+            ctx2D.beginPath();
+            ctx2D.moveTo(vestX + 2 * dpr, vestY + vestH / 2);
+            ctx2D.lineTo(vestX + vestW - 2 * dpr, vestY + vestH / 2);
+            ctx2D.moveTo(vestX + vestW * 0.3, vestY);
+            ctx2D.lineTo(vestX + vestW * 0.3, vestY + vestH);
+            ctx2D.moveTo(vestX + vestW * 0.7, vestY);
+            ctx2D.lineTo(vestX + vestW * 0.7, vestY + vestH);
+            ctx2D.stroke();
+
+            // 4. 黄色工业安全帽
+            const headR = Math.min(w, h) * 0.24;
+            ctx2D.fillStyle = '#eab308';
+            ctx2D.beginPath();
+            ctx2D.arc(center.sx, center.sy - 3 * dpr, headR, 0, Math.PI * 2);
+            ctx2D.fill();
+            ctx2D.strokeStyle = '#ca8a04';
+            ctx2D.lineWidth = 1.5 * dpr;
+            ctx2D.stroke();
+
+            // 帽檐线条
+            ctx2D.strokeStyle = '#a16207';
+            ctx2D.lineWidth = 1.8 * dpr;
+            ctx2D.beginPath();
+            ctx2D.arc(center.sx, center.sy - 3 * dpr, headR * 0.85, 0, Math.PI);
+            ctx2D.stroke();
+
+            ctx2D.restore();
+            drawObstacle2DLabel(center.sx, vestY - 14 * dpr, `👷 人员 #${obs.id}`, '#e11d48');
+
+          } else if (type === 'pallet') {
+            // 🪵 标准木质栈板 2D 实体
+            ctx2D.fillStyle = '#d97706';
             ctx2D.fillRect(s.sx, s.sy, w, h);
-            ctx2D.strokeStyle = theme.stroke;
+            ctx2D.strokeStyle = '#78350f';
             ctx2D.lineWidth = 2 * dpr;
             ctx2D.strokeRect(s.sx, s.sy, w, h);
 
+            // 木条缝隙 (5条横向木铺板)
+            const slatCount = 5;
+            const slatH = h / slatCount;
+            ctx2D.fillStyle = '#b45309';
+            for (let i = 1; i < slatCount; i++) {
+              ctx2D.fillRect(s.sx, s.sy + i * slatH - 1 * dpr, w, 2 * dpr);
+            }
+
+            // 叉车插口卡槽 (深色入叉缺口)
+            ctx2D.fillStyle = '#451a03';
+            const notchW = w * 0.22;
+            const notchH = 4 * dpr;
+            ctx2D.fillRect(s.sx + w * 0.18, s.sy, notchW, notchH);
+            ctx2D.fillRect(s.sx + w * 0.6, s.sy, notchW, notchH);
+            ctx2D.fillRect(s.sx + w * 0.18, s.sy + h - notchH, notchW, notchH);
+            ctx2D.fillRect(s.sx + w * 0.6, s.sy + h - notchH, notchW, notchH);
+
+            // 栈板货物绑定打包带
+            ctx2D.strokeStyle = 'rgba(254, 243, 199, 0.7)';
+            ctx2D.lineWidth = 1.5 * dpr;
+            ctx2D.strokeRect(s.sx + 4 * dpr, s.sy + 4 * dpr, w - 8 * dpr, h - 8 * dpr);
+
+            ctx2D.restore();
+            drawObstacle2DLabel(center.sx, s.sy - 12 * dpr, `🪵 木栈板 #${obs.id}`, '#d97706');
+
+          } else if (type === 'shelf') {
+            // 🏗️ 双层轻型货架 2D 实体
             ctx2D.fillStyle = '#1e293b';
-            ctx2D.font = `bold ${10 * dpr}px sans-serif`;
+            ctx2D.fillRect(s.sx, s.sy, w, h);
+
+            // 仓库专用蓝色立柱边框
+            ctx2D.strokeStyle = '#2563eb';
+            ctx2D.lineWidth = 3 * dpr;
+            ctx2D.strokeRect(s.sx, s.sy, w, h);
+
+            // 中部醒目橙色防撞横梁
+            ctx2D.fillStyle = '#ea580c';
+            ctx2D.fillRect(s.sx, s.sy + h / 2 - 2 * dpr, w, 4 * dpr);
+
+            // X 交叉支撑桁架线
+            ctx2D.strokeStyle = 'rgba(59, 130, 246, 0.45)';
+            ctx2D.lineWidth = 1.5 * dpr;
+            ctx2D.beginPath();
+            ctx2D.moveTo(s.sx, s.sy); ctx2D.lineTo(s.sx + w, s.sy + h);
+            ctx2D.moveTo(s.sx + w, s.sy); ctx2D.lineTo(s.sx, s.sy + h);
+            ctx2D.stroke();
+
+            // 4 处角钢加固立柱
+            ctx2D.fillStyle = '#1d4ed8';
+            const legS = Math.min(8 * dpr, w * 0.15);
+            ctx2D.fillRect(s.sx, s.sy, legS, legS);
+            ctx2D.fillRect(s.sx + w - legS, s.sy, legS, legS);
+            ctx2D.fillRect(s.sx, s.sy + h - legS, legS, legS);
+            ctx2D.fillRect(s.sx + w - legS, s.sy + h - legS, legS, legS);
+
+            ctx2D.restore();
+            drawObstacle2DLabel(center.sx, s.sy - 12 * dpr, `🏗️ 货架 #${obs.id}`, '#2563eb');
+
+          } else if (type === 'box') {
+            // 📦 工业周转纸箱 2D 实体
+            ctx2D.fillStyle = '#fef3c7';
+            ctx2D.fillRect(s.sx, s.sy, w, h);
+            ctx2D.strokeStyle = '#b45309';
+            ctx2D.lineWidth = 2 * dpr;
+            ctx2D.strokeRect(s.sx, s.sy, w, h);
+
+            // 封箱深棕胶带 (十字封口)
+            ctx2D.fillStyle = '#92400e';
+            const tapeW = Math.max(4 * dpr, w * 0.18);
+            ctx2D.fillRect(s.sx, center.sy - tapeW / 2, w, tapeW);
+
+            // 纸箱折痕
+            ctx2D.strokeStyle = '#d97706';
+            ctx2D.lineWidth = 1 * dpr;
+            ctx2D.beginPath();
+            ctx2D.moveTo(s.sx + w * 0.15, s.sy); ctx2D.lineTo(s.sx + w * 0.15, s.sy + h);
+            ctx2D.moveTo(s.sx + w * 0.85, s.sy); ctx2D.lineTo(s.sx + w * 0.85, s.sy + h);
+            ctx2D.stroke();
+
+            // 纸箱中心标志
+            ctx2D.fillStyle = '#78350f';
+            ctx2D.font = `bold ${Math.max(10, Math.min(13, 11 * dpr))}px sans-serif`;
             ctx2D.textAlign = 'center';
             ctx2D.textBaseline = 'middle';
-            ctx2D.fillText(theme.text, s.sx + w / 2, s.sy + h / 2);
-          });
-        }
+            ctx2D.fillText('📦', center.sx, center.sy);
+
+            ctx2D.restore();
+            drawObstacle2DLabel(center.sx, s.sy - 12 * dpr, `📦 纸箱 #${obs.id}`, '#b45309');
+
+          } else {
+            // 通用障碍物 (黄色警示斜纹)
+            ctx2D.fillStyle = '#fef08a';
+            ctx2D.fillRect(s.sx, s.sy, w, h);
+            ctx2D.strokeStyle = '#ca8a04';
+            ctx2D.lineWidth = 2 * dpr;
+            ctx2D.strokeRect(s.sx, s.sy, w, h);
+
+            ctx2D.save();
+            ctx2D.beginPath();
+            ctx2D.rect(s.sx, s.sy, w, h);
+            ctx2D.clip();
+            ctx2D.strokeStyle = '#1e293b';
+            ctx2D.lineWidth = 3 * dpr;
+            for (let offset = -h; offset < w + h; offset += 14 * dpr) {
+              ctx2D.beginPath();
+              ctx2D.moveTo(s.sx + offset, s.sy);
+              ctx2D.lineTo(s.sx + offset + h, s.sy + h);
+              ctx2D.stroke();
+            }
+            ctx2D.restore();
+
+            ctx2D.restore();
+            drawObstacle2DLabel(center.sx, s.sy - 12 * dpr, `⚠️ 障碍 #${obs.id}`, '#f59e0b');
+          }
+        });
       }
 
       // ------------------------------------------------------------
@@ -2909,10 +3150,262 @@ HTML_CONTENT = """<!DOCTYPE html>
     // 3D THREE.JS 场景渲染与动态点云 (3D VIEWPORT)
     // --------------------------------------------------------------
     let scene3D, camera3D, renderer3D, controls3D;
-    let robot3DGroup, pointCloud3D;
+    let robot3DGroup, pointCloud3D, obstacles3DGroup;
     const MAX_3D_PTS = 14400;
     const ptPos3D = new Float32Array(MAX_3D_PTS * 3);
     const ptCol3D = new Float32Array(MAX_3D_PTS * 3);
+
+    function create3DTextSprite(text, borderColor = '#38bdf8') {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+
+      // 背景胶囊气泡 (暗黑半透明玻璃 + 亮色边框)
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      if (ctx.roundRect) ctx.roundRect(8, 8, 240, 48, 12);
+      else ctx.fillRect(8, 8, 240, 48);
+      ctx.fill();
+
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = 3;
+      if (ctx.roundRect) { ctx.roundRect(8, 8, 240, 48, 12); ctx.stroke(); }
+      else ctx.strokeRect(8, 8, 240, 48);
+
+      ctx.font = 'bold 22px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.fillStyle = '#f8fafc';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, 128, 32);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+      const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+      const sprite = new THREE.Sprite(spriteMat);
+      sprite.scale.set(1.4, 0.35, 1.0);
+      return sprite;
+    }
+
+    let last3DObsSignature = '';
+    function update3DObstacles() {
+      if (!scene3D || !obstacles3DGroup) return;
+      const curList = injectedObstacles || [];
+      const curSig = JSON.stringify(curList.map(o => ({ id: o.id, x: o.x, y: o.y, w: o.w, h: o.h, type: o.type })));
+      if (curSig === last3DObsSignature) return;
+      last3DObsSignature = curSig;
+
+      // 清理原有的 3D 障碍物对象
+      while (obstacles3DGroup.children.length > 0) {
+        const child = obstacles3DGroup.children[0];
+        obstacles3DGroup.remove(child);
+        if (child.traverse) {
+          child.traverse(c => {
+            if (c.geometry) c.geometry.dispose();
+            if (c.material) {
+              if (Array.isArray(c.material)) c.material.forEach(m => m.dispose());
+              else c.material.dispose();
+            }
+          });
+        }
+      }
+
+      if (!curList || curList.length === 0) return;
+
+      curList.forEach(obs => {
+        const obsGroup = new THREE.Group();
+        obsGroup.position.set(obs.x, obs.y, 0);
+
+        const type = obs.type || 'box';
+        const w = obs.w || 0.8;
+        const h = obs.h || 0.8;
+
+        if (type === 'person') {
+          // 👷 车间作业人员 3D 实体
+          // 1. 地面安全预警红环 (贴地发光)
+          const ringGeom = new THREE.RingGeometry(Math.max(w, h) * 0.65, Math.max(w, h) * 0.75, 32);
+          const ringMat = new THREE.MeshBasicMaterial({ color: 0xef4444, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+          const ring = new THREE.Mesh(ringGeom, ringMat);
+          ring.position.z = 0.02;
+          obsGroup.add(ring);
+
+          // 2. 双腿/工装裤
+          const legMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.7 });
+          const leg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.7, 12), legMat);
+          leg1.position.set(-0.1, 0, 0.35);
+          leg1.rotation.x = Math.PI / 2;
+          obsGroup.add(leg1);
+          const leg2 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.7, 12), legMat);
+          leg2.position.set(0.1, 0, 0.35);
+          leg2.rotation.x = Math.PI / 2;
+          obsGroup.add(leg2);
+
+          // 3. 荧光安全背心躯干
+          const vestGeom = new THREE.BoxGeometry(0.42, 0.28, 0.65);
+          const vestMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.4 });
+          const vest = new THREE.Mesh(vestGeom, vestMat);
+          vest.position.set(0, 0, 1.02);
+          obsGroup.add(vest);
+
+          // 4. 反光银条
+          const stripeGeom = new THREE.BoxGeometry(0.44, 0.3, 0.08);
+          const stripeMat = new THREE.MeshBasicMaterial({ color: 0xf1f5f9 });
+          const stripe = new THREE.Mesh(stripeGeom, stripeMat);
+          stripe.position.set(0, 0, 1.15);
+          obsGroup.add(stripe);
+
+          // 5. 头部与黄色安全帽
+          const head = new THREE.Mesh(
+            new THREE.SphereGeometry(0.12, 16, 16),
+            new THREE.MeshStandardMaterial({ color: 0xfde047, roughness: 0.6 })
+          );
+          head.position.set(0, 0, 1.45);
+          obsGroup.add(head);
+
+          const helmet = new THREE.Mesh(
+            new THREE.SphereGeometry(0.14, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2),
+            new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.2 })
+          );
+          helmet.position.set(0, 0, 1.48);
+          obsGroup.add(helmet);
+
+          // 3D 浮空标签
+          const label = create3DTextSprite(`👷 人员 #${obs.id}`, '#e11d48');
+          label.position.set(0, 0, 1.95);
+          obsGroup.add(label);
+
+        } else if (type === 'pallet') {
+          // 🪵 标准木质栈板 3D 实体
+          // 底部 3 根纵向木撑条
+          const stringerMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.8 });
+          [-w / 2 + 0.08, 0, w / 2 - 0.08].forEach(xPos => {
+            const stringer = new THREE.Mesh(new THREE.BoxGeometry(0.1, h, 0.09), stringerMat);
+            stringer.position.set(xPos, 0, 0.045);
+            obsGroup.add(stringer);
+          });
+
+          // 顶层 5 根横向木铺板
+          const deckMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.7 });
+          const slatCount = 5;
+          const stepY = (h - 0.12) / (slatCount - 1);
+          for (let i = 0; i < slatCount; i++) {
+            const slatY = -h / 2 + 0.06 + i * stepY;
+            const slat = new THREE.Mesh(new THREE.BoxGeometry(w, stepY * 0.75, 0.03), deckMat);
+            slat.position.set(0, slatY, 0.105);
+            obsGroup.add(slat);
+          }
+
+          // 上方码放的货物纸箱
+          const cargoGeom = new THREE.BoxGeometry(w * 0.85, h * 0.85, 0.55);
+          const cargoMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5 });
+          const cargo = new THREE.Mesh(cargoGeom, cargoMat);
+          cargo.position.set(0, 0, 0.4);
+          obsGroup.add(cargo);
+
+          // 货物胶带封箱
+          const tapeGeom = new THREE.BoxGeometry(w * 0.86, 0.1, 0.56);
+          const tapeMat = new THREE.MeshBasicMaterial({ color: 0x78350f });
+          const tape = new THREE.Mesh(tapeGeom, tapeMat);
+          tape.position.set(0, 0, 0.4);
+          obsGroup.add(tape);
+
+          // 3D 浮空标签
+          const label = create3DTextSprite(`🪵 托盘 #${obs.id}`, '#d97706');
+          label.position.set(0, 0, 0.95);
+          obsGroup.add(label);
+
+        } else if (type === 'shelf') {
+          // 🏗️ 双层轻型货架 3D 实体
+          const shelfH = 1.8;
+          const colMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.3 });
+          const beamMat = new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.4 });
+
+          // 4 根立柱
+          const legX = w / 2 - 0.04;
+          const legY = h / 2 - 0.04;
+          [[-legX, -legY], [legX, -legY], [legX, legY], [-legX, legY]].forEach(([lx, ly]) => {
+            const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, shelfH), colMat);
+            leg.position.set(lx, ly, shelfH / 2);
+            obsGroup.add(leg);
+          });
+
+          // 2 层横梁与隔板
+          [0.85, shelfH].forEach(beamZ => {
+            const beamF = new THREE.Mesh(new THREE.BoxGeometry(w, 0.04, 0.08), beamMat);
+            beamF.position.set(0, legY, beamZ);
+            obsGroup.add(beamF);
+            const beamB = new THREE.Mesh(new THREE.BoxGeometry(w, 0.04, 0.08), beamMat);
+            beamB.position.set(0, -legY, beamZ);
+            obsGroup.add(beamB);
+
+            const beamL = new THREE.Mesh(new THREE.BoxGeometry(0.04, h - 0.08, 0.08), beamMat);
+            beamL.position.set(-legX, 0, beamZ);
+            obsGroup.add(beamL);
+            const beamR = new THREE.Mesh(new THREE.BoxGeometry(0.04, h - 0.08, 0.08), beamMat);
+            beamR.position.set(legX, 0, beamZ);
+            obsGroup.add(beamR);
+
+            const deck = new THREE.Mesh(
+              new THREE.BoxGeometry(w - 0.06, h - 0.06, 0.02),
+              new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.4, roughness: 0.3 })
+            );
+            deck.position.set(0, 0, beamZ - 0.01);
+            obsGroup.add(deck);
+          });
+
+          // 货架货位物料箱
+          const bin1 = new THREE.Mesh(
+            new THREE.BoxGeometry(w * 0.38, h * 0.7, 0.35),
+            new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3 })
+          );
+          bin1.position.set(-w * 0.22, 0, 1.05);
+          obsGroup.add(bin1);
+
+          const bin2 = new THREE.Mesh(
+            new THREE.BoxGeometry(w * 0.38, h * 0.7, 0.35),
+            new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.3 })
+          );
+          bin2.position.set(w * 0.22, 0, 1.05);
+          obsGroup.add(bin2);
+
+          // 3D 浮空标签
+          const label = create3DTextSprite(`🏗️ 货架 #${obs.id}`, '#2563eb');
+          label.position.set(0, 0, shelfH + 0.35);
+          obsGroup.add(label);
+
+        } else if (type === 'box') {
+          // 📦 工业周转纸箱 3D 实体
+          const boxH = Math.min(w, h) * 0.9;
+          const boxMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.6 });
+          const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, boxH), boxMat);
+          box.position.set(0, 0, boxH / 2);
+          obsGroup.add(box);
+
+          const tapeMat = new THREE.MeshBasicMaterial({ color: 0x78350f });
+          const tapeX = new THREE.Mesh(new THREE.BoxGeometry(w + 0.002, 0.1, 0.004), tapeMat);
+          tapeX.position.set(0, 0, boxH + 0.002);
+          obsGroup.add(tapeX);
+
+          // 3D 浮空标签
+          const label = create3DTextSprite(`📦 纸箱 #${obs.id}`, '#b45309');
+          label.position.set(0, 0, boxH + 0.3);
+          obsGroup.add(label);
+
+        } else {
+          // 通用障碍实体
+          const obsH = 0.8;
+          const obsMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.4 });
+          const block = new THREE.Mesh(new THREE.BoxGeometry(w, h, obsH), obsMat);
+          block.position.set(0, 0, obsH / 2);
+          obsGroup.add(block);
+
+          const label = create3DTextSprite(`⚠️ 障碍 #${obs.id}`, '#f59e0b');
+          label.position.set(0, 0, obsH + 0.3);
+          obsGroup.add(label);
+        }
+
+        obstacles3DGroup.add(obsGroup);
+      });
+    }
 
     function init3DScene() {
       const cv3D = document.getElementById('canvas-3d');
@@ -2943,6 +3436,10 @@ HTML_CONTENT = """<!DOCTYPE html>
       const grid = new THREE.GridHelper(30, 30, 0x94a3b8, 0xe2e8f0);
       grid.rotation.x = Math.PI / 2;
       scene3D.add(grid);
+
+      // 物理障碍物实体 3D 组合
+      obstacles3DGroup = new THREE.Group();
+      scene3D.add(obstacles3DGroup);
 
       // 车身 3D 模型
       robot3DGroup = new THREE.Group();
@@ -3000,6 +3497,9 @@ HTML_CONTENT = """<!DOCTYPE html>
           robot3DGroup.position.set(renderPose.x, renderPose.y, 0);
           robot3DGroup.rotation.z = renderPose.yaw;
         }
+
+        // 同步 3D 物理障碍物实体 (作业人员/栈板/货架/周转箱)
+        update3DObstacles();
 
         // 跟随相机模式
         if (cameraMode === 'follow' && camera3D && controls3D) {
